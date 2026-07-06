@@ -58,9 +58,9 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .cc-s{font-size:11px;color:var(--tx3);margin-bottom:12px}
 
 /* ===== Tabelas ===== */
-.scroll{overflow-x:hidden;overflow-y:auto;max-height:75vh}
+.scroll{overflow-x:auto;overflow-y:auto;max-height:75vh}
 table.dt{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9.5px}
-table.dt th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:8px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.1px;background:var(--bg3);position:sticky;top:0;z-index:1;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2}
+table.dt th{text-align:left;padding:6px 10px 6px 4px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:8px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.1px;background:var(--bg3);position:sticky;top:0;z-index:1;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2;position:relative}
 table.dt td{padding:2px 4px;border-bottom:1px solid var(--brd);color:var(--tx);white-space:normal;overflow-wrap:break-word;word-break:normal;vertical-align:top;position:relative}
 table.dt tbody tr:hover td{background:var(--bg3)}
 table.dt td.mono{font-family:'DM Mono',monospace;font-weight:500}
@@ -68,11 +68,33 @@ table.dt td.muted{color:var(--tx3);font-size:9px}
 table.dt tr.flash td{animation:flashRow 1.4s ease}
 @keyframes flashRow{0%{background:rgba(245,166,35,.35)}100%{background:transparent}}
 
-.cell-in{width:100%;min-width:0;font:500 9.5px 'DM Sans',sans-serif;border:1px solid transparent;border-radius:5px;padding:2px 3px;background:transparent;color:var(--tx)}
+.col-resizer{position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;user-select:none;z-index:2}
+.col-resizer:hover,.col-resizer.active{background:rgba(245,166,35,.5)}
+
+table.dt th[data-field]{cursor:pointer}
+table.dt th[data-field]:hover{color:var(--navy)}
+table.dt th.filtered{color:var(--amber) !important;background:rgba(245,166,35,.15)}
+.fico{font-size:8px;opacity:.6}
+th.filtered .fico{opacity:1}
+.filter-box{position:absolute;z-index:2000;background:#fff;border:1px solid var(--brd2);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.2);width:220px;padding:8px}
+.filter-box .filter-input{width:100%;box-sizing:border-box;height:32px;border:1px solid var(--brd2);border-radius:6px;padding:0 8px;font:500 12px 'DM Sans',sans-serif;margin-bottom:4px}
+.filter-box .filter-list{max-height:160px;overflow:auto}
+.filter-box .ac-item{padding:5px 8px;font-size:11.5px;border-radius:5px}
+.filter-box .filter-clear{padding:6px 8px;font-size:11px;color:var(--red);cursor:pointer;border-top:1px solid var(--brd);margin-top:4px;text-align:center}
+.filter-box .filter-clear:hover{background:rgba(198,40,40,.08)}
+
+.cell-in{display:block;width:100%;min-width:0;font:500 9.5px 'DM Sans',sans-serif;border:1px solid transparent;border-radius:5px;padding:2px 3px;background:transparent;color:var(--tx);box-sizing:border-box}
 .cell-in:hover{border-color:var(--brd2)}
-.cell-in:focus{border-color:var(--amber);background:#fff;position:relative;z-index:6;width:max(100%,220px);font-size:12px;padding:5px 7px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.cell-in:focus{border-color:var(--amber);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+input.cell-in:focus{position:relative;z-index:6;width:max(100%,220px);font-size:12px;padding:5px 7px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+textarea.cell-in{resize:none;overflow:hidden;line-height:1.35;font-family:'DM Sans',sans-serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}
 select.cell-in{cursor:pointer}
 td.ro{color:var(--tx2)}
+
+/* ===== Autocompletar (substitui datalist nativo p/ funcionar com textarea) ===== */
+.ac-box{position:absolute;z-index:2000;background:#fff;border:1px solid var(--brd2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:220px;overflow:auto}
+.ac-item{padding:6px 10px;font:500 12px 'DM Sans',sans-serif;color:var(--tx);cursor:pointer}
+.ac-item:hover{background:var(--bg3)}
 
 /* ===== Badges ===== */
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap}
@@ -162,16 +184,6 @@ td.ro{color:var(--tx2)}
     <div id="pages"></div>
   </div>
 
-  <!-- Sugestões de autocompletar (preenchidas via JS com valores já usados) -->
-  <datalist id="dl-motorista"></datalist>
-  <datalist id="dl-status"></datalist>
-  <datalist id="dl-localizacao"></datalist>
-  <datalist id="dl-destino_final"></datalist>
-  <datalist id="dl-proximo_destino"></datalist>
-  <datalist id="dl-previsao_chegada_filial"></datalist>
-  <datalist id="dl-observacoes"></datalist>
-  <datalist id="dl-hora_extra"></datalist>
-  <datalist id="dl-produtividade"></datalist>
 </div>
 
 <script>
@@ -285,6 +297,8 @@ function buildTabs() {
 
 function switchTab(tab) {
   activeTab = tab;
+  columnFilters = {};
+  closeColumnFilter();
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tab}`));
   if (tab === 'historico') renderHistorico();
@@ -301,31 +315,197 @@ async function loadAll() {
   ]);
   veiculos = new Map((vs || []).map(v => [v.id, v]));
   programacao = new Map((ps || []).map(p => [p.veiculo_id, p]));
-  rebuildDatalists();
+  rebuildSuggestions();
   renderPage(activeTab === 'historico' ? 'geral' : activeTab);
   if (activeTab !== 'historico') renderPage(activeTab);
 }
 
-const DATALIST_FIELDS = ['motorista', 'status', 'localizacao', 'destino_final', 'proximo_destino', 'previsao_chegada_filial', 'observacoes', 'hora_extra', 'produtividade'];
+/* =====================================================================
+   SUGESTÕES (autocompletar próprio — funciona com textarea, ao contrário
+   do <datalist> nativo, que só funciona com <input>)
+   ===================================================================== */
+const AC_FIELDS = ['motorista', 'status', 'localizacao', 'destino_final', 'proximo_destino', 'previsao_chegada_filial', 'observacoes'];
+let SUGGESTIONS = {};
 
-function rebuildDatalists() {
+function rebuildSuggestions() {
   const values = {};
-  DATALIST_FIELDS.forEach(f => values[f] = new Set());
+  AC_FIELDS.forEach(f => values[f] = new Set());
   for (const p of programacao.values()) {
-    DATALIST_FIELDS.forEach(f => { if (p[f]) values[f].add(p[f]); });
+    AC_FIELDS.forEach(f => { if (p[f]) values[f].add(p[f]); });
   }
-  DATALIST_FIELDS.forEach(f => {
-    const dl = document.getElementById(`dl-${f}`);
-    if (!dl) return;
-    dl.innerHTML = [...values[f]].sort().map(v => `<option value="${esc(v)}">`).join('');
+  AC_FIELDS.forEach(f => { SUGGESTIONS[f] = [...values[f]].sort(); });
+}
+
+let acBox = null;
+function hideSuggestions() { if (acBox) { acBox.remove(); acBox = null; } }
+function showSuggestions(el, field) {
+  hideSuggestions();
+  const list = SUGGESTIONS[field];
+  if (!list || !list.length) return;
+  const q = el.value.trim().toLowerCase();
+  const opts = (q ? list.filter(v => v.toLowerCase().includes(q)) : list).slice(0, 8);
+  if (!opts.length) return;
+  const rect = el.getBoundingClientRect();
+  acBox = document.createElement('div');
+  acBox.className = 'ac-box';
+  acBox.style.left = (rect.left + window.scrollX) + 'px';
+  acBox.style.top = (rect.bottom + window.scrollY + 3) + 'px';
+  acBox.style.width = Math.max(rect.width, 200) + 'px';
+  acBox.innerHTML = opts.map(o => `<div class="ac-item">${esc(o)}</div>`).join('');
+  document.body.appendChild(acBox);
+  [...acBox.children].forEach((item, i) => {
+    item.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      el.value = opts[i];
+      hideSuggestions();
+      autoGrow(el);
+      el.dispatchEvent(new Event('change'));
+    });
   });
+}
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
+
+/* =====================================================================
+   COLUNAS REDIMENSIONÁVEIS (largura salva no navegador, por rótulo)
+   ===================================================================== */
+function loadColWidths() {
+  try { return JSON.parse(localStorage.getItem('frota_col_widths') || '{}'); } catch (e) { return {}; }
+}
+function saveColWidth(label, px) {
+  const w = loadColWidths();
+  w[label] = Math.round(px);
+  localStorage.setItem('frota_col_widths', JSON.stringify(w));
+}
+function attachColResize(theadRow) {
+  if (!theadRow) return;
+  theadRow.querySelectorAll('th').forEach(th => {
+    const handle = document.createElement('span');
+    handle.className = 'col-resizer';
+    th.appendChild(handle);
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.classList.add('active');
+      const startX = e.clientX;
+      const startW = th.getBoundingClientRect().width;
+      const label = th.dataset.label;
+      function onMove(ev) {
+        const w = Math.max(36, startW + (ev.clientX - startX));
+        th.style.width = w + 'px';
+        if (label) saveColWidth(label, w);
+      }
+      function onUp() {
+        handle.classList.remove('active');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+/* =====================================================================
+   FILTROS NOS CABEÇALHOS DAS COLUNAS
+   ===================================================================== */
+let filterBox = null;
+function closeColumnFilter() {
+  if (filterBox) { filterBox.remove(); filterBox = null; }
+  document.removeEventListener('mousedown', onDocClickCloseFilter);
+}
+function onDocClickCloseFilter(e) {
+  if (filterBox && !filterBox.contains(e.target)) closeColumnFilter();
+}
+
+function attachColFilters(theadRow, tab) {
+  if (!theadRow) return;
+  theadRow.querySelectorAll('th[data-field]').forEach(th => {
+    th.addEventListener('click', () => openColumnFilter(th, th.dataset.field, tab));
+  });
+}
+
+function openColumnFilter(th, field, tab) {
+  if (filterBox && filterBox.dataset.field === field) { closeColumnFilter(); return; }
+  closeColumnFilter();
+  const rect = th.getBoundingClientRect();
+  const current = columnFilters[field] || '';
+  const distinct = [...new Set(veiculosDaEquipe(tab).map(v => fieldValue(v, programacao.get(v.id), field)).filter(Boolean))].sort();
+
+  filterBox = document.createElement('div');
+  filterBox.className = 'filter-box';
+  filterBox.dataset.field = field;
+  filterBox.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 240) + 'px';
+  filterBox.style.top = (rect.bottom + window.scrollY + 3) + 'px';
+  filterBox.innerHTML = `
+    <input type="text" class="filter-input" placeholder="Filtrar…" value="${esc(current)}">
+    <div class="filter-list">${distinct.slice(0, 40).map(d => `<div class="ac-item">${esc(d)}</div>`).join('')}</div>
+    <div class="filter-clear">Limpar filtro</div>`;
+  document.body.appendChild(filterBox);
+
+  const input = filterBox.querySelector('.filter-input');
+  input.focus();
+  input.select();
+  input.addEventListener('input', () => {
+    columnFilters[field] = input.value;
+    th.classList.toggle('filtered', !!input.value);
+    applyFilterUpdate(tab);
+  });
+  input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeColumnFilter(); });
+  filterBox.querySelectorAll('.filter-list .ac-item').forEach((item, i) => {
+    item.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      columnFilters[field] = distinct[i];
+      th.classList.add('filtered');
+      applyFilterUpdate(tab);
+      closeColumnFilter();
+    });
+  });
+  filterBox.querySelector('.filter-clear').addEventListener('mousedown', (ev) => {
+    ev.preventDefault();
+    delete columnFilters[field];
+    th.classList.remove('filtered');
+    applyFilterUpdate(tab);
+    closeColumnFilter();
+  });
+  setTimeout(() => document.addEventListener('mousedown', onDocClickCloseFilter), 0);
+}
+
+function applyFilterUpdate(tab) {
+  renderRows(tab);
+  const lista = veiculosDaEquipe(tab);
+  const countEl = document.getElementById(`count-${tab}`);
+  const anyFilter = Object.values(columnFilters).some(Boolean);
+  if (countEl) countEl.textContent = `${lista.length} veículo(s)` + (anyFilter ? ' · filtro ativo' : ' · arraste a borda de uma coluna pra redimensionar, clique no ▾ pra filtrar');
 }
 
 /* =====================================================================
    RENDER — página por equipe / visão geral
    ===================================================================== */
+const VEICULO_FIELDS = new Set(['placa', 'tipo', 'conjunto', 'equipe']);
+function fieldValue(v, p, field) {
+  if (!field) return null;
+  if (VEICULO_FIELDS.has(field)) return v[field];
+  return p ? p[field] : null;
+}
+
+let columnFilters = {};
 function veiculosDaEquipe(equipe) {
-  return [...veiculos.values()].filter(v => equipe === 'geral' || v.equipe === equipe).sort((a, b) => a.placa.localeCompare(b.placa));
+  let lista = [...veiculos.values()].filter(v => equipe === 'geral' || v.equipe === equipe);
+  const active = Object.entries(columnFilters).filter(([, q]) => q);
+  if (active.length) {
+    lista = lista.filter(v => {
+      const p = programacao.get(v.id);
+      return active.every(([field, q]) => {
+        const val = fieldValue(v, p, field);
+        return val && String(val).toLowerCase().includes(q.toLowerCase());
+      });
+    });
+  }
+  return lista.sort((a, b) => a.placa.localeCompare(b.placa));
 }
 
 function badgeStatus(status) {
@@ -356,27 +536,36 @@ function renderPage(tab) {
 
   const showEquipe = tab === 'geral';
   const cols = [
-    ['Placa', 6], ['Tipo', 6], ['Conj.', 4],
-    ...(showEquipe ? [['Equipe', 5]] : []),
-    ['Motorista', 11], ['Status Geral', 8], ['Status', 8],
-    ['Localização', 9], ['UF', 3], ['Destino Final', 9], ['UF Dest.', 3], ['Região', 5],
-    ['Prev. Térm.', 5], ['Próx. Destino', 7], ['Prev. Cheg. Filial', 7],
-    ['Obs.', 6], ['H. Extra', 3], ['Produtiv.', 3],
-    ...(editable ? [['', 4]] : []),
+    ['Placa', 'placa', 6], ['Tipo', 'tipo', 6], ['Conj.', 'conjunto', 4],
+    ...(showEquipe ? [['Equipe', 'equipe', 5]] : []),
+    ['Motorista', 'motorista', 11], ['Status Geral', 'status_geral', 8], ['Status', 'status', 8],
+    ['Localização', 'localizacao', 9], ['UF', null, 3], ['Destino Final', 'destino_final', 9], ['UF Dest.', null, 3], ['Região', null, 5],
+    ['Prev. Térm.', 'previsao_termino', 5], ['Próx. Destino', 'proximo_destino', 7], ['Prev. Cheg. Filial', 'previsao_chegada_filial', 7],
+    ['Obs.', 'observacoes', 6], ['H. Extra', 'hora_extra', 3], ['Produtiv.', 'produtividade', 3],
+    ...(editable ? [['', null, 4]] : []),
   ];
-  const theadHtml = cols.map(([label, pct]) => `<th style="width:${pct}%">${label}</th>`).join('');
+  const savedWidths = loadColWidths();
+  const theadHtml = cols.map(([label, field, pct]) => {
+    const saved = label && savedWidths[label];
+    const width = saved ? `${saved}px` : `${pct}%`;
+    const filterCls = field && columnFilters[field] ? ' filtered' : '';
+    const fieldAttr = field ? ` data-field="${field}"` : '';
+    return `<th data-label="${esc(label)}"${fieldAttr} class="${filterCls}" style="width:${width}">${label}${field ? ' <span class="fico">▾</span>' : ''}</th>`;
+  }).join('');
 
   page.innerHTML = `
     ${header}
     <div class="cc">
       <div class="cc-t">Veículos${tab !== 'geral' ? ' — ' + tab : ''}</div>
-      <div class="cc-s">${lista.length} veículo(s)</div>
+      <div class="cc-s" id="count-${tab}">${lista.length} veículo(s) · arraste a borda de uma coluna pra redimensionar, clique no ▾ pra filtrar</div>
       ${addForm}
       <div class="scroll"><table class="dt">
         <thead><tr>${theadHtml}</tr></thead>
         <tbody id="tbody-${tab}"></tbody>
       </table></div>
     </div>`;
+  attachColResize(page.querySelector('table.dt thead tr'));
+  attachColFilters(page.querySelector('table.dt thead tr'), tab);
 
   if (editable) document.getElementById('btnAddVeiculo').addEventListener('click', () => addVeiculo(tab));
 
@@ -401,31 +590,31 @@ function rowHtml(v, editable, showEquipe) {
 
   if (!editable) {
     return `<tr data-vid="${v.id}">
-      <td class="mono">${v.placa}</td><td class="ro">${v.tipo || ''}</td><td class="ro">${v.conjunto || ''}</td>${equipeCell}
-      <td class="ro" title="${esc(p.motorista)}">${p.motorista || ''}</td><td>${badgeStatus(p.status_geral)}</td><td class="ro" title="${esc(p.status)}">${p.status || ''}</td>
-      <td class="ro" title="${esc(p.localizacao)}">${p.localizacao || ''}</td><td class="ro mono">${ufAtual}</td>
-      <td class="ro" title="${esc(p.destino_final)}">${p.destino_final || ''}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
-      <td class="ro mono">${p.previsao_termino || ''}</td><td class="ro" title="${esc(p.proximo_destino)}">${p.proximo_destino || ''}</td><td class="ro" title="${esc(p.previsao_chegada_filial)}">${p.previsao_chegada_filial || ''}</td>
-      <td class="ro muted" title="${esc(p.observacoes)}">${p.observacoes || ''}</td><td class="ro">${p.hora_extra || ''}</td><td class="ro">${p.produtividade || ''}</td>
+      <td class="mono">${esc(v.placa)}</td><td class="ro">${esc(v.tipo)}</td><td class="ro">${esc(v.conjunto)}</td>${equipeCell}
+      <td class="ro" title="${esc(p.motorista)}">${esc(p.motorista)}</td><td>${badgeStatus(p.status_geral)}</td><td class="ro" title="${esc(p.status)}">${esc(p.status)}</td>
+      <td class="ro" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono">${ufAtual}</td>
+      <td class="ro" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
+      <td class="ro mono">${esc(p.previsao_termino)}</td><td class="ro" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
+      <td class="ro muted" title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td class="ro">${esc(p.hora_extra)}</td><td class="ro">${esc(p.produtividade)}</td>
     </tr>`;
   }
 
   const opts = STATUS_GERAL_OPTS.map(o => `<option value="${o}" ${p.status_geral === o ? 'selected' : ''}>${o}</option>`).join('');
   return `<tr data-vid="${v.id}">
     <td class="mono">${v.placa}</td><td class="ro">${v.tipo || ''}</td><td class="ro">${v.conjunto || ''}</td>${equipeCell}
-    <td><input class="cell-in" list="dl-motorista" title="${esc(p.motorista)}" data-field="motorista" value="${esc(p.motorista)}"></td>
+    <td>${taHtml('motorista', p.motorista)}</td>
     <td><select class="cell-in" data-field="status_geral"><option value=""></option>${opts}</select></td>
-    <td><input class="cell-in" list="dl-status" title="${esc(p.status)}" data-field="status" value="${esc(p.status)}"></td>
-    <td><input class="cell-in" list="dl-localizacao" title="${esc(p.localizacao)}" data-field="localizacao" placeholder="CIDADE/UF" value="${esc(p.localizacao)}"></td>
+    <td>${taHtml('status', p.status)}</td>
+    <td>${taHtml('localizacao', p.localizacao, 'CIDADE/UF')}</td>
     <td class="ro mono">${ufAtual}</td>
-    <td><input class="cell-in" list="dl-destino_final" title="${esc(p.destino_final)}" data-field="destino_final" placeholder="CIDADE/UF" value="${esc(p.destino_final)}"></td>
+    <td>${taHtml('destino_final', p.destino_final, 'CIDADE/UF')}</td>
     <td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
     <td><input class="cell-in" type="date" data-field="previsao_termino" value="${p.previsao_termino || ''}"></td>
-    <td><input class="cell-in" list="dl-proximo_destino" title="${esc(p.proximo_destino)}" data-field="proximo_destino" value="${esc(p.proximo_destino)}"></td>
-    <td><input class="cell-in" list="dl-previsao_chegada_filial" title="${esc(p.previsao_chegada_filial)}" data-field="previsao_chegada_filial" value="${esc(p.previsao_chegada_filial)}"></td>
-    <td><input class="cell-in" list="dl-observacoes" title="${esc(p.observacoes)}" data-field="observacoes" value="${esc(p.observacoes)}"></td>
-    <td><input class="cell-in" list="dl-hora_extra" data-field="hora_extra" value="${esc(p.hora_extra)}"></td>
-    <td><input class="cell-in" list="dl-produtividade" data-field="produtividade" value="${esc(p.produtividade)}"></td>
+    <td>${taHtml('proximo_destino', p.proximo_destino)}</td>
+    <td>${taHtml('previsao_chegada_filial', p.previsao_chegada_filial)}</td>
+    <td>${taHtml('observacoes', p.observacoes)}</td>
+    <td><input class="cell-in" data-field="hora_extra" value="${esc(p.hora_extra)}"></td>
+    <td><input class="cell-in" data-field="produtividade" value="${esc(p.produtividade)}"></td>
     <td>
       <button class="btn-hist" data-action="ver-historico" title="Ver histórico / desfazer">🕐</button>
       <button class="btn-del" data-action="del-veiculo" title="Remover veículo">✕</button>
@@ -433,17 +622,36 @@ function rowHtml(v, editable, showEquipe) {
   </tr>`;
 }
 
-function esc(v) { return v == null ? '' : String(v).replace(/"/g, '&quot;'); }
+function esc(v) {
+  return v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function taHtml(field, value, placeholder) {
+  const v = value == null ? '' : String(value);
+  const ph = placeholder ? ` placeholder="${esc(placeholder)}"` : '';
+  return `<textarea class="cell-in" rows="1" data-field="${field}" data-ac="${field}" title="${esc(v)}"${ph}>${esc(v)}</textarea>`;
+}
 
 function attachRowHandlers(tbody) {
+  tbody.querySelectorAll('textarea.cell-in').forEach(autoGrow);
   tbody.querySelectorAll('[data-field]').forEach(el => {
     const vid = el.closest('tr').dataset.vid;
     const field = el.dataset.field;
     const key = `${vid}:${field}`;
-    el.addEventListener('focus', () => editingKey = key);
-    el.addEventListener('blur', () => { editingKey = null; saveField(vid, field, el.value); });
+    el.addEventListener('focus', () => {
+      editingKey = key;
+      if (el.dataset.ac) showSuggestions(el, el.dataset.ac);
+    });
+    el.addEventListener('blur', () => {
+      editingKey = null;
+      saveField(vid, field, el.value);
+      setTimeout(hideSuggestions, 150);
+    });
     if (el.tagName === 'SELECT' || el.type === 'date') el.addEventListener('change', () => saveField(vid, field, el.value));
-    if (el.tagName === 'INPUT' && el.type === 'text') el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') el.blur(); });
+    if (el.tagName === 'TEXTAREA') {
+      el.addEventListener('input', () => { autoGrow(el); if (el.dataset.ac) showSuggestions(el, el.dataset.ac); });
+      el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); } if (ev.key === 'Escape') hideSuggestions(); });
+    }
   });
   tbody.querySelectorAll('[data-action="del-veiculo"]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -540,7 +748,7 @@ function handleProgramacaoChange(payload) {
   if (payload.eventType === 'DELETE') programacao.delete(vid);
   else programacao.set(vid, payload.new);
   touchLastUpd();
-  rebuildDatalists();
+  rebuildSuggestions();
   refreshVisibleRow(vid);
 }
 
@@ -568,7 +776,7 @@ function refreshVisibleRow(veiculoId) {
   const newTr = tbody.querySelector(`tr[data-vid="${veiculoId}"]`);
   if (newTr) {
     newTr.classList.add('flash');
-    if (editable) attachRowHandlers(tbody);
+    if (editable) attachRowHandlers(newTr);
   }
 }
 
