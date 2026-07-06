@@ -218,6 +218,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    ===================================================================== */
 let currentUser = null;
 let currentTeam = null;
+let isAdmin = false;
 let veiculos = new Map();      // id -> veiculo
 let programacao = new Map();   // veiculo_id -> programacao
 let activeTab = 'geral';
@@ -245,13 +246,14 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 
 async function afterLogin(user) {
   currentUser = user;
-  const { data: profile, error } = await sb.from('profiles').select('equipe,nome_exibicao').eq('id', user.id).single();
+  const { data: profile, error } = await sb.from('profiles').select('equipe,nome_exibicao,is_admin').eq('id', user.id).single();
   if (error || !profile) {
     document.getElementById('loginErr').textContent = 'Login sem perfil de equipe associado. Fale com o administrador.';
     await sb.auth.signOut();
     return;
   }
   currentTeam = profile.equipe;
+  isAdmin = !!profile.is_admin;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('teamBadge').textContent = profile.nome_exibicao || currentTeam;
@@ -273,7 +275,7 @@ function buildTabs() {
   const pages = document.getElementById('pages');
   const tabs = [{ key: 'geral', label: 'Visão Geral' }, ...EQUIPES.map(e => ({ key: e, label: e })), { key: 'historico', label: 'Histórico' }];
   nav.innerHTML = tabs.map(t => {
-    const mine = t.key === currentTeam ? ' mine' : '';
+    const mine = (t.key === currentTeam || (isAdmin && EQUIPES.includes(t.key))) ? ' mine' : '';
     return `<button class="nav-btn${t.key === activeTab ? ' active' : ''}${mine}" data-tab="${t.key}">${t.label}</button>`;
   }).join('');
   nav.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -335,7 +337,7 @@ function badgeStatus(status) {
 function renderPage(tab) {
   const page = document.getElementById(`page-${tab}`);
   if (!page) return;
-  const editable = tab === currentTeam;
+  const editable = tab === currentTeam || (isAdmin && EQUIPES.includes(tab));
   const lista = veiculosDaEquipe(tab);
 
   const header = tab === 'geral'
@@ -384,7 +386,7 @@ function renderPage(tab) {
 function renderRows(tab) {
   const tbody = document.getElementById(`tbody-${tab}`);
   if (!tbody) return;
-  const editable = tab === currentTeam;
+  const editable = tab === currentTeam || (isAdmin && EQUIPES.includes(tab));
   const lista = veiculosDaEquipe(tab);
   tbody.innerHTML = lista.map(v => rowHtml(v, editable, tab === 'geral')).join('');
   if (editable) attachRowHandlers(tbody);
@@ -561,7 +563,7 @@ function refreshVisibleRow(veiculoId) {
   if (editingKey && editingKey.startsWith(veiculoId + ':')) return; // não sobrescreve edição em andamento
   const tr = tbody.querySelector(`tr[data-vid="${veiculoId}"]`);
   if (!tr) { renderRows(activeTab); return; }
-  const editable = activeTab === currentTeam;
+  const editable = activeTab === currentTeam || (isAdmin && EQUIPES.includes(activeTab));
   tr.outerHTML = rowHtml(v, editable, activeTab === 'geral');
   const newTr = tbody.querySelector(`tr[data-vid="${veiculoId}"]`);
   if (newTr) {
