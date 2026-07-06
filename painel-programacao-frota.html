@@ -41,7 +41,7 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .btn-refresh{height:34px;padding:0 14px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font:600 12px 'DM Sans',sans-serif;cursor:pointer;transition:all .15s}
 .btn-refresh:hover{border-color:var(--amber);color:var(--amber)}
 
-.wrap{max-width:1420px;margin:0 auto;padding:18px 20px 60px}
+.wrap{max-width:100%;margin:0;padding:18px 16px 60px}
 .page{display:none}
 .page.active{display:block}
 
@@ -58,19 +58,19 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .cc-s{font-size:11px;color:var(--tx3);margin-bottom:12px}
 
 /* ===== Tabelas ===== */
-.scroll{overflow:auto;max-height:65vh}
-table.dt{width:100%;border-collapse:collapse;font-size:12px}
-table.dt th{text-align:left;padding:9px 10px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;background:var(--bg3);position:sticky;top:0;z-index:1;white-space:nowrap}
-table.dt td{padding:5px 10px;border-bottom:1px solid var(--brd);color:var(--tx);white-space:nowrap}
+.scroll{overflow-x:hidden;overflow-y:auto;max-height:75vh}
+table.dt{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9.5px}
+table.dt th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:8px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.1px;background:var(--bg3);position:sticky;top:0;z-index:1;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2}
+table.dt td{padding:2px 4px;border-bottom:1px solid var(--brd);color:var(--tx);white-space:normal;overflow-wrap:break-word;word-break:normal;vertical-align:top;position:relative}
 table.dt tbody tr:hover td{background:var(--bg3)}
 table.dt td.mono{font-family:'DM Mono',monospace;font-weight:500}
-table.dt td.muted{color:var(--tx3);font-size:11px}
+table.dt td.muted{color:var(--tx3);font-size:9px}
 table.dt tr.flash td{animation:flashRow 1.4s ease}
 @keyframes flashRow{0%{background:rgba(245,166,35,.35)}100%{background:transparent}}
 
-.cell-in{width:100%;min-width:90px;font:500 12px 'DM Sans',sans-serif;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:var(--tx)}
+.cell-in{width:100%;min-width:0;font:500 9.5px 'DM Sans',sans-serif;border:1px solid transparent;border-radius:5px;padding:2px 3px;background:transparent;color:var(--tx)}
 .cell-in:hover{border-color:var(--brd2)}
-.cell-in:focus{border-color:var(--amber);background:#fff}
+.cell-in:focus{border-color:var(--amber);background:#fff;position:relative;z-index:6;width:max(100%,220px);font-size:12px;padding:5px 7px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
 select.cell-in{cursor:pointer}
 td.ro{color:var(--tx2)}
 
@@ -352,7 +352,17 @@ function renderPage(tab) {
       <button class="btn-add" id="btnAddVeiculo">+ Adicionar veículo</button>
     </div>` : '';
 
-  const colGroupExtra = tab === 'geral' ? '<th>Equipe</th>' : '';
+  const showEquipe = tab === 'geral';
+  const cols = [
+    ['Placa', 6], ['Tipo', 6], ['Conj.', 4],
+    ...(showEquipe ? [['Equipe', 5]] : []),
+    ['Motorista', 11], ['Status Geral', 8], ['Status', 8],
+    ['Localização', 9], ['UF', 3], ['Destino Final', 9], ['UF Dest.', 3], ['Região', 5],
+    ['Prev. Térm.', 5], ['Próx. Destino', 7], ['Prev. Cheg. Filial', 7],
+    ['Obs.', 6], ['H. Extra', 3], ['Produtiv.', 3],
+    ...(editable ? [['', 4]] : []),
+  ];
+  const theadHtml = cols.map(([label, pct]) => `<th style="width:${pct}%">${label}</th>`).join('');
 
   page.innerHTML = `
     ${header}
@@ -361,14 +371,7 @@ function renderPage(tab) {
       <div class="cc-s">${lista.length} veículo(s)</div>
       ${addForm}
       <div class="scroll"><table class="dt">
-        <thead><tr>
-          <th>Placa</th><th>Tipo</th><th>Conjunto</th>${colGroupExtra}
-          <th>Motorista</th><th>Status Geral</th><th>Status</th>
-          <th>Localização</th><th>UF</th><th>Destino Final</th><th>UF Dest.</th><th>Região</th>
-          <th>Previsão Término</th><th>Próximo Destino</th><th>Previsão Chegada Filial</th>
-          <th>Observações</th><th>Hora Extra</th><th>Produtividade</th>
-          ${editable ? '<th></th>' : ''}
-        </tr></thead>
+        <thead><tr>${theadHtml}</tr></thead>
         <tbody id="tbody-${tab}"></tbody>
       </table></div>
     </div>`;
@@ -397,28 +400,28 @@ function rowHtml(v, editable, showEquipe) {
   if (!editable) {
     return `<tr data-vid="${v.id}">
       <td class="mono">${v.placa}</td><td class="ro">${v.tipo || ''}</td><td class="ro">${v.conjunto || ''}</td>${equipeCell}
-      <td class="ro">${p.motorista || ''}</td><td>${badgeStatus(p.status_geral)}</td><td class="ro">${p.status || ''}</td>
-      <td class="ro">${p.localizacao || ''}</td><td class="ro mono">${ufAtual}</td>
-      <td class="ro">${p.destino_final || ''}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
-      <td class="ro mono">${p.previsao_termino || ''}</td><td class="ro">${p.proximo_destino || ''}</td><td class="ro">${p.previsao_chegada_filial || ''}</td>
-      <td class="ro muted">${p.observacoes || ''}</td><td class="ro">${p.hora_extra || ''}</td><td class="ro">${p.produtividade || ''}</td>
+      <td class="ro" title="${esc(p.motorista)}">${p.motorista || ''}</td><td>${badgeStatus(p.status_geral)}</td><td class="ro" title="${esc(p.status)}">${p.status || ''}</td>
+      <td class="ro" title="${esc(p.localizacao)}">${p.localizacao || ''}</td><td class="ro mono">${ufAtual}</td>
+      <td class="ro" title="${esc(p.destino_final)}">${p.destino_final || ''}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
+      <td class="ro mono">${p.previsao_termino || ''}</td><td class="ro" title="${esc(p.proximo_destino)}">${p.proximo_destino || ''}</td><td class="ro" title="${esc(p.previsao_chegada_filial)}">${p.previsao_chegada_filial || ''}</td>
+      <td class="ro muted" title="${esc(p.observacoes)}">${p.observacoes || ''}</td><td class="ro">${p.hora_extra || ''}</td><td class="ro">${p.produtividade || ''}</td>
     </tr>`;
   }
 
   const opts = STATUS_GERAL_OPTS.map(o => `<option value="${o}" ${p.status_geral === o ? 'selected' : ''}>${o}</option>`).join('');
   return `<tr data-vid="${v.id}">
     <td class="mono">${v.placa}</td><td class="ro">${v.tipo || ''}</td><td class="ro">${v.conjunto || ''}</td>${equipeCell}
-    <td><input class="cell-in" list="dl-motorista" data-field="motorista" value="${esc(p.motorista)}"></td>
+    <td><input class="cell-in" list="dl-motorista" title="${esc(p.motorista)}" data-field="motorista" value="${esc(p.motorista)}"></td>
     <td><select class="cell-in" data-field="status_geral"><option value=""></option>${opts}</select></td>
-    <td><input class="cell-in" list="dl-status" data-field="status" value="${esc(p.status)}"></td>
-    <td><input class="cell-in" list="dl-localizacao" data-field="localizacao" placeholder="CIDADE/UF" value="${esc(p.localizacao)}"></td>
+    <td><input class="cell-in" list="dl-status" title="${esc(p.status)}" data-field="status" value="${esc(p.status)}"></td>
+    <td><input class="cell-in" list="dl-localizacao" title="${esc(p.localizacao)}" data-field="localizacao" placeholder="CIDADE/UF" value="${esc(p.localizacao)}"></td>
     <td class="ro mono">${ufAtual}</td>
-    <td><input class="cell-in" list="dl-destino_final" data-field="destino_final" placeholder="CIDADE/UF" value="${esc(p.destino_final)}"></td>
+    <td><input class="cell-in" list="dl-destino_final" title="${esc(p.destino_final)}" data-field="destino_final" placeholder="CIDADE/UF" value="${esc(p.destino_final)}"></td>
     <td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
     <td><input class="cell-in" type="date" data-field="previsao_termino" value="${p.previsao_termino || ''}"></td>
-    <td><input class="cell-in" list="dl-proximo_destino" data-field="proximo_destino" value="${esc(p.proximo_destino)}"></td>
-    <td><input class="cell-in" list="dl-previsao_chegada_filial" data-field="previsao_chegada_filial" value="${esc(p.previsao_chegada_filial)}"></td>
-    <td><input class="cell-in" list="dl-observacoes" data-field="observacoes" value="${esc(p.observacoes)}"></td>
+    <td><input class="cell-in" list="dl-proximo_destino" title="${esc(p.proximo_destino)}" data-field="proximo_destino" value="${esc(p.proximo_destino)}"></td>
+    <td><input class="cell-in" list="dl-previsao_chegada_filial" title="${esc(p.previsao_chegada_filial)}" data-field="previsao_chegada_filial" value="${esc(p.previsao_chegada_filial)}"></td>
+    <td><input class="cell-in" list="dl-observacoes" title="${esc(p.observacoes)}" data-field="observacoes" value="${esc(p.observacoes)}"></td>
     <td><input class="cell-in" list="dl-hora_extra" data-field="hora_extra" value="${esc(p.hora_extra)}"></td>
     <td><input class="cell-in" list="dl-produtividade" data-field="produtividade" value="${esc(p.produtividade)}"></td>
     <td>
