@@ -58,9 +58,9 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .cc-s{font-size:11px;color:var(--tx3);margin-bottom:12px}
 
 /* ===== Tabelas ===== */
-.scroll{overflow-x:auto;overflow-y:auto;max-height:75vh}
+.scroll{overflow:visible}
 table.dt{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9.5px}
-table.dt th{text-align:left;padding:6px 10px 6px 4px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:8px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.1px;background:var(--bg3);position:sticky;top:0;z-index:1;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2;position:relative}
+table.dt th{text-align:left;padding:6px 10px 6px 4px;border-bottom:1px solid var(--brd);font-family:'Syne',sans-serif;font-size:8px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.1px;background:var(--bg3);position:sticky;top:60px;z-index:50;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2}
 table.dt td{padding:2px 4px;border-bottom:1px solid var(--brd);color:var(--tx);white-space:normal;overflow-wrap:break-word;word-break:normal;vertical-align:top;position:relative}
 table.dt tbody tr:hover td{background:var(--bg3)}
 table.dt td.mono{font-family:'DM Mono',monospace;font-weight:500}
@@ -74,6 +74,7 @@ table.dt tr.flash td{animation:flashRow 1.4s ease}
 table.dt th[data-field]{cursor:pointer}
 table.dt th[data-field]:hover{color:var(--navy)}
 table.dt th.filtered{color:var(--amber) !important;background:rgba(245,166,35,.15)}
+.th-label:hover{text-decoration:underline}
 .fico{font-size:8px;opacity:.6}
 th.filtered .fico{opacity:1}
 .filter-box{position:absolute;z-index:2000;background:#fff;border:1px solid var(--brd2);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.2);width:220px;padding:8px}
@@ -298,6 +299,7 @@ function buildTabs() {
 function switchTab(tab) {
   activeTab = tab;
   columnFilters = {};
+  sortState = { field: null, dir: 'asc' };
   closeColumnFilter();
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tab}`));
@@ -428,6 +430,20 @@ function attachColFilters(theadRow, tab) {
   });
 }
 
+function attachColSort(theadRow, tab) {
+  if (!theadRow) return;
+  theadRow.querySelectorAll('.th-label').forEach(lbl => {
+    const field = lbl.dataset.sortField;
+    if (!field) return;
+    lbl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (sortState.field === field) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+      else sortState = { field, dir: 'asc' };
+      renderPage(tab);
+    });
+  });
+}
+
 function openColumnFilter(th, field, tab) {
   if (filterBox && filterBox.dataset.field === field) { closeColumnFilter(); return; }
   closeColumnFilter();
@@ -483,6 +499,39 @@ function applyFilterUpdate(tab) {
 }
 
 /* =====================================================================
+   EXPORTAR CSV (respeita os filtros ativos no momento)
+   ===================================================================== */
+function csvCell(v) {
+  const s = v == null ? '' : String(v);
+  return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportarCSV(tab) {
+  const lista = veiculosDaEquipe(tab);
+  const headers = ['Placa', 'Tipo', 'Conjunto', 'Equipe', 'Motorista', 'Status Geral', 'Status',
+    'Localização', 'UF', 'Destino Final', 'UF Destino', 'Região', 'Previsão Término',
+    'Próximo Destino', 'Previsão Chegada Filial', 'Observações', 'Hora Extra', 'Produtividade'];
+  const rows = lista.map(v => {
+    const p = programacao.get(v.id) || {};
+    const ufA = extractUF(p.localizacao);
+    const ufD = extractUF(p.destino_final);
+    return [v.placa, v.tipo, v.conjunto, v.equipe, p.motorista, p.status_geral, p.status,
+      p.localizacao, ufA, p.destino_final, ufD, regiaoDaUF(ufD), p.previsao_termino,
+      p.proximo_destino, p.previsao_chegada_filial, p.observacoes, p.hora_extra, p.produtividade];
+  });
+  const csv = String.fromCharCode(0xFEFF) + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `frota-visao-geral-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* =====================================================================
    RENDER — página por equipe / visão geral
    ===================================================================== */
 const VEICULO_FIELDS = new Set(['placa', 'tipo', 'conjunto', 'equipe']);
@@ -493,6 +542,7 @@ function fieldValue(v, p, field) {
 }
 
 let columnFilters = {};
+let sortState = { field: null, dir: 'asc' };
 function veiculosDaEquipe(equipe) {
   let lista = [...veiculos.values()].filter(v => equipe === 'geral' || v.equipe === equipe);
   const active = Object.entries(columnFilters).filter(([, q]) => q);
@@ -505,7 +555,18 @@ function veiculosDaEquipe(equipe) {
       });
     });
   }
-  return lista.sort((a, b) => a.placa.localeCompare(b.placa));
+  if (sortState.field) {
+    const f = sortState.field;
+    const dir = sortState.dir === 'desc' ? -1 : 1;
+    lista.sort((a, b) => {
+      const va = fieldValue(a, programacao.get(a.id), f) || '';
+      const vb = fieldValue(b, programacao.get(b.id), f) || '';
+      return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * dir;
+    });
+  } else {
+    lista.sort((a, b) => a.placa.localeCompare(b.placa));
+  }
+  return lista;
 }
 
 function badgeStatus(status) {
@@ -534,6 +595,11 @@ function renderPage(tab) {
       <button class="btn-add" id="btnAddVeiculo">+ Adicionar veículo</button>
     </div>` : '';
 
+  const exportBar = tab === 'geral' ? `
+    <div style="margin-bottom:14px">
+      <button class="btn-add" id="btnExportar">⬇ Exportar CSV</button>
+    </div>` : '';
+
   const showEquipe = tab === 'geral';
   const cols = [
     ['Placa', 'placa', 6], ['Tipo', 'tipo', 6], ['Conj.', 'conjunto', 4],
@@ -550,15 +616,18 @@ function renderPage(tab) {
     const width = saved ? `${saved}px` : `${pct}%`;
     const filterCls = field && columnFilters[field] ? ' filtered' : '';
     const fieldAttr = field ? ` data-field="${field}"` : '';
-    return `<th data-label="${esc(label)}"${fieldAttr} class="${filterCls}" style="width:${width}">${label}${field ? ' <span class="fico">▾</span>' : ''}</th>`;
+    const arrow = (field && sortState.field === field) ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    const labelSpan = field ? `<span class="th-label" data-sort-field="${field}">${label}${arrow}</span>` : label;
+    return `<th data-label="${esc(label)}"${fieldAttr} class="${filterCls}" style="width:${width}">${labelSpan}${field ? ' <span class="fico">▾</span>' : ''}</th>`;
   }).join('');
 
   page.innerHTML = `
     ${header}
     <div class="cc">
       <div class="cc-t">Veículos${tab !== 'geral' ? ' — ' + tab : ''}</div>
-      <div class="cc-s" id="count-${tab}">${lista.length} veículo(s) · arraste a borda de uma coluna pra redimensionar, clique no ▾ pra filtrar</div>
+      <div class="cc-s" id="count-${tab}">${lista.length} veículo(s) · clique no nome da coluna pra ordenar, no ▾ pra filtrar, e arraste a borda pra redimensionar</div>
       ${addForm}
+      ${exportBar}
       <div class="scroll"><table class="dt">
         <thead><tr>${theadHtml}</tr></thead>
         <tbody id="tbody-${tab}"></tbody>
@@ -566,8 +635,10 @@ function renderPage(tab) {
     </div>`;
   attachColResize(page.querySelector('table.dt thead tr'));
   attachColFilters(page.querySelector('table.dt thead tr'), tab);
+  attachColSort(page.querySelector('table.dt thead tr'), tab);
 
   if (editable) document.getElementById('btnAddVeiculo').addEventListener('click', () => addVeiculo(tab));
+  if (tab === 'geral') document.getElementById('btnExportar').addEventListener('click', () => exportarCSV(tab));
 
   renderRows(tab);
 }
