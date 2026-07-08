@@ -51,6 +51,18 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .hero-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#fff;line-height:1.2}
 .hero-title span{color:var(--amber)}
 .hero-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:3px}
+.hero-stats{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;position:relative;z-index:1}
+.hero-stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:7px 14px;min-width:78px;text-align:center;cursor:pointer;transition:transform .12s,background .12s,border-color .12s;font-family:inherit}
+.hero-stat:hover{background:rgba(255,255,255,.16);transform:translateY(-2px)}
+.hero-stat.active{background:rgba(255,255,255,.24);border-color:var(--hs-c,#fff)}
+.hero-stat .hs-n{font-family:'DM Mono',monospace;font-size:19px;font-weight:700;color:var(--hs-c,#fff);line-height:1.1}
+.hero-stat .hs-l{font-size:9px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;white-space:nowrap}
+
+@keyframes heroDetailPop{0%{opacity:0;transform:scale(.94) translateY(-8px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+.hero-detail{background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:14px 18px;margin-bottom:18px;animation:heroDetailPop .16s ease-out;transform-origin:top right}
+.hero-detail-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.hero-detail-close{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:15px;line-height:1;padding:4px}
+.hero-detail-close:hover{color:var(--tx)}
 
 /* ===== Cards ===== */
 .cc{background:var(--bg2);border-radius:12px;border:1px solid var(--brd);padding:16px 18px}
@@ -97,14 +109,7 @@ td.ro{color:var(--tx2)}
 .ac-item{padding:6px 10px;font:500 12px 'DM Sans',sans-serif;color:var(--tx);cursor:pointer}
 .ac-item:hover{background:var(--bg3)}
 
-/* ===== Resumo de status ===== */
-.resumo-card{border:1px solid var(--brd);border-radius:10px;margin-bottom:10px;overflow:hidden}
-.resumo-head{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg2);border:none;cursor:pointer;text-align:left;font:600 12px 'DM Sans',sans-serif;color:var(--tx)}
-.resumo-head:hover{background:var(--bg3)}
 .resumo-count{color:var(--tx3);font-size:12px}
-.resumo-arrow{margin-left:auto;transition:transform .15s;color:var(--tx3)}
-.resumo-head.open .resumo-arrow{transform:rotate(180deg)}
-.resumo-list{border-top:1px solid var(--brd)}
 
 /* ===== Filtro rápido de placa (funciona no celular também) ===== */
 .placa-filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
@@ -168,6 +173,14 @@ td.ro{color:var(--tx2)}
 .btn-restore{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--brd2);background:var(--bg3);color:var(--navy);font:600 11px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
 .btn-restore:hover{background:var(--navy);color:#fff;border-color:var(--navy)}
 .modal-close{margin-top:14px;height:32px;padding:0 14px;border-radius:7px;border:none;background:var(--bg4);color:var(--tx);font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+
+/* ===== Modal de confirmação ===== */
+.modal-confirm{width:380px}
+.confirm-msg{font-size:12px;color:var(--tx2);line-height:1.6;margin-bottom:18px}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px}
+.confirm-actions .modal-close{margin-top:0}
+.btn-danger{height:32px;padding:0 16px;border-radius:7px;border:none;background:var(--red);color:#fff;font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+.btn-danger:hover{background:#a01f1f}
 
 /* ===== Login ===== */
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1B3A6B 0%,#0d2444 60%,#0a1e38 100%)}
@@ -292,6 +305,67 @@ const STATUS_BADGE = {
   'Dedicado': 'btl',
   'Em Deslocamento': 'ba',
 };
+const STATUS_HERO_COLOR = {
+  'Carregado': '#64B5F6',
+  'Disponivel': '#66BB6A',
+  'Manutenção': '#EF5350',
+  'Dedicado': '#4DD0C4',
+  'Em Deslocamento': '#F5A623',
+  'Sem status': 'rgba(255,255,255,.7)',
+};
+
+function heroStatsHtml(lista) {
+  const itens = statusCounts(lista);
+  if (!itens.length) return '';
+  return `<div class="hero-stats">${itens.map(([s, n]) => `
+    <button type="button" class="hero-stat" data-status="${esc(s)}" style="--hs-c:${STATUS_HERO_COLOR[s] || '#fff'}">
+      <div class="hs-n">${n}</div>
+      <div class="hs-l">${esc(s)}</div>
+    </button>`).join('')}</div>`;
+}
+
+function statusCounts(lista) {
+  const counts = {};
+  STATUS_GERAL_OPTS.forEach(s => counts[s] = 0);
+  let semStatus = 0;
+  lista.forEach(v => {
+    const p = programacao.get(v.id) || {};
+    if (p.status_geral && counts.hasOwnProperty(p.status_geral)) counts[p.status_geral]++;
+    else semStatus++;
+  });
+  const itens = STATUS_GERAL_OPTS.map(s => [s, counts[s]]).filter(([, n]) => n > 0);
+  if (semStatus) itens.push(['Sem status', semStatus]);
+  return itens;
+}
+
+function heroDetailHtml(tab, status, lista) {
+  const showEquipe = tab === 'geral';
+  const itens = lista.filter(v => {
+    const p = programacao.get(v.id) || {};
+    return status === 'Sem status' ? !STATUS_GERAL_OPTS.includes(p.status_geral) : p.status_geral === status;
+  }).slice().sort((a, b) => a.placa.localeCompare(b.placa));
+  const cls = STATUS_BADGE[status] || 'bn';
+  const linhas = itens.map(v => {
+    const p = programacao.get(v.id) || {};
+    return `<tr>
+      <td class="mono" data-label="Placa">${esc(v.placa)}</td>
+      ${showEquipe ? `<td class="mono" data-label="Equipe">${esc(v.equipe)}</td>` : ''}
+      <td data-label="Motorista">${esc(p.motorista)}</td>
+      <td data-label="Localização">${esc(p.localizacao)}</td>
+      <td data-label="Destino">${esc(p.destino_final)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="hero-detail-head">
+      <span class="badge ${cls}">${esc(status)}</span>
+      <span class="resumo-count">${itens.length} veículo(s)</span>
+      <button type="button" class="hero-detail-close" aria-label="Fechar">✕</button>
+    </div>
+    <div class="scroll"><table class="dt">
+      <thead><tr><th>Placa</th>${showEquipe ? '<th>Equipe</th>' : ''}<th>Motorista</th><th>Localização</th><th>Destino</th></tr></thead>
+      <tbody>${linhas || `<tr><td colspan="${showEquipe ? 5 : 4}" class="muted">Nenhum veículo.</td></tr>`}</tbody>
+    </table></div>`;
+}
 
 const UF_REGIAO = {
   AC:'Norte', AL:'Nordeste', AP:'Norte', AM:'Norte', BA:'Nordeste', CE:'Nordeste',
@@ -378,7 +452,7 @@ async function afterLogin(user) {
 function buildTabs() {
   const nav = document.getElementById('navTabs');
   const pages = document.getElementById('pages');
-  const tabs = [{ key: 'geral', label: 'Visão Geral' }, { key: 'resumo', label: 'Resumo' }, ...EQUIPES.map(e => ({ key: e, label: e })), { key: 'historico', label: 'Histórico' }];
+  const tabs = [{ key: 'geral', label: 'Visão Geral' }, ...EQUIPES.map(e => ({ key: e, label: e })), { key: 'historico', label: 'Histórico' }];
   nav.innerHTML = tabs.map(t => {
     const mine = (t.key === currentTeam || (isAdmin && EQUIPES.includes(t.key))) ? ' mine' : '';
     return `<button class="nav-btn${t.key === activeTab ? ' active' : ''}${mine}" data-tab="${t.key}">${t.label}</button>`;
@@ -396,7 +470,6 @@ function switchTab(tab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tab}`));
   if (tab === 'historico') renderHistorico();
-  else if (tab === 'resumo') renderResumo();
   else renderPage(tab);
 }
 
@@ -489,7 +562,6 @@ async function loadAll() {
 
   rebuildSuggestions();
   if (activeTab === 'historico') { /* histórico não usa dados ao vivo */ }
-  else if (activeTab === 'resumo') renderResumo();
   else renderPage(activeTab);
 }
 
@@ -512,12 +584,12 @@ function rebuildSuggestions() {
 
 let acBox = null;
 function hideSuggestions() { if (acBox) { acBox.remove(); acBox = null; } }
-function showSuggestions(el, field) {
+function showSuggestions(el, field, mostrarTudo) {
   hideSuggestions();
   const list = SUGGESTIONS[field];
   if (!list || !list.length) return;
-  const q = el.value.trim().toLowerCase();
-  const opts = (q ? list.filter(v => v.toLowerCase().includes(q)) : list).slice(0, 8);
+  const q = mostrarTudo ? '' : el.value.trim().toLowerCase();
+  const opts = (q ? list.filter(v => v.toLowerCase().includes(q)) : list).slice(0, 200);
   if (!opts.length) return;
   const rect = el.getBoundingClientRect();
   const largura = Math.max(rect.width, 200);
@@ -1035,8 +1107,8 @@ function renderPage(tab) {
   const lista = veiculosDaEquipe(tab);
 
   const header = tab === 'geral'
-    ? `<div class="hero"><div><div class="hero-title">Visão <span>Geral</span> da Frota</div><div class="hero-sub">Todos os veículos de todas as equipes · somente leitura</div></div></div>`
-    : `<div class="hero"><div><div class="hero-title">Equipe <span>${tab}</span></div><div class="hero-sub">${editable ? 'Você pode editar os veículos desta equipe' : 'Somente leitura — pertence a outra equipe'}</div></div></div>`;
+    ? `<div class="hero"><div><div class="hero-title">Visão <span>Geral</span> da Frota</div><div class="hero-sub">Todos os veículos de todas as equipes · somente leitura</div></div>${heroStatsHtml(lista)}</div>`
+    : `<div class="hero"><div><div class="hero-title">Equipe <span>${tab}</span></div><div class="hero-sub">${editable ? 'Você pode editar os veículos desta equipe' : 'Somente leitura — pertence a outra equipe'}</div></div>${heroStatsHtml(lista)}</div>`;
 
   const placaFilterBar = `
     <div class="placa-filter-bar">
@@ -1054,6 +1126,13 @@ function renderPage(tab) {
       <datalist id="tiposList"><option value="CAVALO - 6X2"><option value="CAVALO - 6X4"></datalist>
       <datalist id="conjList"><option value="BITREM"><option value="RODO"></datalist>
       <button class="btn-add" id="btnAddVeiculo">+ Adicionar veículo</button>
+    </div>` : '';
+
+  const addMotoristaForm = editable ? `
+    <div class="addbar">
+      <div class="fld"><label>Nome completo do motorista</label><input id="addMotoristaNome" placeholder="JOSE CARLOS DA SILVA" style="text-transform:uppercase;width:260px"></div>
+      <div class="fld"><label>Matrícula</label><input id="addMotoristaMatricula" placeholder="00000" style="width:110px"></div>
+      <button class="btn-add" id="btnAddMotorista">+ Adicionar motorista</button>
     </div>` : '';
 
   const exportBar = tab === 'geral' ? `
@@ -1084,11 +1163,13 @@ function renderPage(tab) {
 
   page.innerHTML = `
     ${header}
+    <div class="hero-detail hidden" id="heroDetail-${tab}"></div>
     <div class="cc">
       <div class="cc-t">Veículos${tab !== 'geral' ? ' — ' + tab : ''}</div>
       <div class="cc-s" id="count-${tab}">${lista.length} veículo(s) · clique no nome da coluna pra ordenar, no ▾ pra filtrar, e arraste a borda pra redimensionar</div>
       ${placaFilterBar}
       ${addForm}
+      ${addMotoristaForm}
       ${exportBar}
       <div class="scroll"><table class="dt">
         <thead><tr>${theadHtml}</tr></thead>
@@ -1098,6 +1179,25 @@ function renderPage(tab) {
   attachColResize(page.querySelector('table.dt thead tr'));
   attachColFilters(page.querySelector('table.dt thead tr'), tab);
   attachColSort(page.querySelector('table.dt thead tr'), tab);
+
+  const heroDetail = document.getElementById(`heroDetail-${tab}`);
+  const fecharHeroDetail = () => {
+    heroDetail.classList.add('hidden');
+    heroDetail.innerHTML = '';
+    page.querySelectorAll('.hero-stat.active').forEach(b => b.classList.remove('active'));
+  };
+  page.querySelectorAll('.hero-stat').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const status = btn.dataset.status;
+      const jaAberto = btn.classList.contains('active');
+      fecharHeroDetail();
+      if (jaAberto) return;
+      btn.classList.add('active');
+      heroDetail.innerHTML = heroDetailHtml(tab, status, lista);
+      heroDetail.classList.remove('hidden');
+      heroDetail.querySelector('.hero-detail-close').addEventListener('click', fecharHeroDetail);
+    });
+  });
 
   const placaInput = document.getElementById(`placaSearch-${tab}`);
   if (placaInput) {
@@ -1122,6 +1222,7 @@ function renderPage(tab) {
   }
 
   if (editable) document.getElementById('btnAddVeiculo').addEventListener('click', () => addVeiculo(tab));
+  if (editable) document.getElementById('btnAddMotorista').addEventListener('click', () => addMotorista());
   if (tab === 'geral') document.getElementById('btnExportar').addEventListener('click', () => exportarCSV(tab));
 
   renderRows(tab);
@@ -1181,6 +1282,26 @@ function esc(v) {
   return v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function confirmarModal(titulo, mensagem, textoConfirmar = 'Excluir') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box modal-confirm">
+      <h3>${esc(titulo)}</h3>
+      <div class="confirm-msg">${esc(mensagem)}</div>
+      <div class="confirm-actions">
+        <button type="button" class="modal-close" id="confirmCancelBtn">Cancelar</button>
+        <button type="button" class="btn-danger" id="confirmOkBtn">${esc(textoConfirmar)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const fechar = (resultado) => { overlay.remove(); resolve(resultado); };
+    overlay.querySelector('#confirmCancelBtn').addEventListener('click', () => fechar(false));
+    overlay.querySelector('#confirmOkBtn').addEventListener('click', () => fechar(true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) fechar(false); });
+  });
+}
+
 function taHtml(field, value, placeholder) {
   const v = value == null ? '' : String(value);
   const ph = placeholder ? ` placeholder="${esc(placeholder)}"` : '';
@@ -1195,7 +1316,7 @@ function attachRowHandlers(tbody) {
     const key = `${vid}:${field}`;
     el.addEventListener('focus', () => {
       editingKey = key;
-      if (el.dataset.ac) showSuggestions(el, el.dataset.ac);
+      if (el.dataset.ac) showSuggestions(el, el.dataset.ac, true);
     });
     el.addEventListener('blur', () => {
       editingKey = null;
@@ -1212,7 +1333,8 @@ function attachRowHandlers(tbody) {
     btn.addEventListener('click', async () => {
       const vid = btn.closest('tr').dataset.vid;
       const v = veiculos.get(vid);
-      if (!confirm(`Remover o veículo ${v?.placa}? Essa ação não pode ser desfeita.`)) return;
+      const ok = await confirmarModal('Remover veículo', `Tem certeza que deseja remover o veículo ${v?.placa}? Essa ação não pode ser desfeita.`, 'Remover');
+      if (!ok) return;
       await sb.from('veiculos').delete().eq('id', vid);
     });
   });
@@ -1306,6 +1428,24 @@ async function addVeiculo(equipe) {
   document.getElementById('addConjunto').value = '';
 }
 
+async function addMotorista() {
+  const nome = document.getElementById('addMotoristaNome').value.trim().toUpperCase();
+  const matricula = document.getElementById('addMotoristaMatricula').value.trim();
+  if (!nome || !matricula) { alert('Informe o nome completo e a matrícula.'); return; }
+  if (motoristas.has(matricula)) { alert(`Matrícula ${matricula} já cadastrada para ${motoristas.get(matricula).nome}.`); return; }
+  const row = { matricula, nome, atualizado_em: new Date().toISOString() };
+  const { error } = await sb.from('motoristas').insert(row);
+  if (error) {
+    alert(error.code === '23505' ? `Matrícula ${matricula} já cadastrada.` : 'Erro ao adicionar motorista: ' + error.message);
+    return;
+  }
+  motoristas.set(matricula, row);
+  nomeToMatricula.set(normalizeNome(nome), matricula);
+  rebuildSuggestions();
+  document.getElementById('addMotoristaNome').value = '';
+  document.getElementById('addMotoristaMatricula').value = '';
+}
+
 /* =====================================================================
    REALTIME
    ===================================================================== */
@@ -1344,13 +1484,11 @@ function handleVeiculoChange(payload) {
   else veiculos.set(row.id, payload.new);
   touchLastUpd();
   // mudança estrutural (equipe/ativo) — mais simples re-renderizar as páginas visíveis
-  if (activeTab === 'resumo') renderResumo();
-  else if (activeTab !== 'historico') renderPage(activeTab);
+  if (activeTab !== 'historico') renderPage(activeTab);
 }
 
 function refreshVisibleRow(veiculoId) {
   if (activeTab === 'historico') return;
-  if (activeTab === 'resumo') { renderResumo(); return; }
   const v = veiculos.get(veiculoId);
   if (!v) return;
   const tbody = document.getElementById(`tbody-${activeTab}`);
@@ -1365,60 +1503,6 @@ function refreshVisibleRow(veiculoId) {
     newTr.classList.add('flash');
     if (editable) attachRowHandlers(newTr);
   }
-}
-
-/* =====================================================================
-   RESUMO DE STATUS
-   ===================================================================== */
-function renderResumo() {
-  const page = document.getElementById('page-resumo');
-  if (!page) return;
-
-  const grupos = {};
-  STATUS_GERAL_OPTS.forEach(s => grupos[s] = []);
-  grupos['(sem status)'] = [];
-  [...veiculos.values()].forEach(v => {
-    const p = programacao.get(v.id) || {};
-    const key = (p.status_geral && grupos[p.status_geral]) ? p.status_geral : '(sem status)';
-    grupos[key].push({ v, p });
-  });
-
-  const cardsHtml = Object.entries(grupos).filter(([, items]) => items.length).map(([status, items]) => {
-    items.sort((a, b) => a.v.placa.localeCompare(b.v.placa));
-    const cls = STATUS_BADGE[status] || 'bn';
-    const linhas = items.map(({ v, p }) => `<tr>
-      <td class="mono" data-label="Placa">${esc(v.placa)}</td>
-      <td class="mono" data-label="Equipe">${esc(v.equipe)}</td>
-      <td data-label="Motorista">${esc(p.motorista)}</td>
-      <td data-label="Localização">${esc(p.localizacao)}</td>
-      <td data-label="Destino">${esc(p.destino_final)}</td>
-    </tr>`).join('');
-    return `<div class="resumo-card">
-      <button class="resumo-head" type="button">
-        <span class="badge ${cls}">${esc(status)}</span>
-        <span class="resumo-count">${items.length} veículo(s)</span>
-        <span class="resumo-arrow">▾</span>
-      </button>
-      <div class="resumo-list hidden">
-        <div class="scroll"><table class="dt">
-          <thead><tr><th>Placa</th><th>Equipe</th><th>Motorista</th><th>Localização</th><th>Destino</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  page.innerHTML = `
-    <div class="hero"><div><div class="hero-title">Resumo <span>de Status</span></div><div class="hero-sub">Clique num status pra ver as placas — todas as equipes</div></div></div>
-    <div class="cc">${cardsHtml || '<div class="muted">Nenhum veículo cadastrado ainda.</div>'}</div>`;
-
-  page.querySelectorAll('.resumo-head').forEach(head => {
-    head.addEventListener('click', () => {
-      const list = head.nextElementSibling;
-      list.classList.toggle('hidden');
-      head.classList.toggle('open');
-    });
-  });
 }
 
 /* =====================================================================
