@@ -117,6 +117,14 @@ td.ro{color:var(--tx2)}
 .ocr-sug-btn{height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--brd2);background:var(--bg2);font:700 11px 'DM Mono',monospace;cursor:pointer;color:var(--navy)}
 .ocr-sug-btn:hover{background:var(--navy);color:#fff;border-color:var(--navy)}
 
+.cam-box{background:#0a1220;border-radius:12px;padding:16px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.cam-instructions{color:#fff;font-size:12px;text-align:center;margin-bottom:10px}
+.cam-viewport{position:relative;width:min(92vw,480px);aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden;margin:0 auto}
+.cam-viewport video{width:100%;height:100%;object-fit:cover;display:block}
+.cam-guide{position:absolute;left:8%;right:8%;top:50%;transform:translateY(-50%);aspect-ratio:3.2/1;border:3px solid var(--amber);border-radius:6px;box-shadow:0 0 0 2000px rgba(0,0,0,.5);pointer-events:none}
+.cam-actions{display:flex;gap:10px;justify-content:center;margin-top:14px}
+.cam-actions .modal-close{margin-top:0}
+
 /* ===== Produtividade (Km x meta) ===== */
 .prod-cell{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
 .prod-top{display:flex;align-items:baseline;gap:6px;white-space:nowrap}
@@ -736,10 +744,24 @@ async function lerPlacaPorFoto(fileInput, placaInput, statusEl, tab) {
   }
 }
 
-// Usa a foto inteira (sem precisar recortar) — deixa em preto e branco com
-// mais contraste, o que ajuda bastante o OCR a separar a placa do resto
-// (moldura, bandeira, "BRASIL" etc.), que depois é filtrado pela busca por
-// trechos parecidos com placas reais em candidatosDePlaca()/sugestoesDePlaca().
+// As placas Mercosul têm as letras/números sempre em VERMELHO — isola só os
+// pixels avermelhados (vira preto) e apaga o resto (vira branco: moldura azul,
+// "BRASIL", bandeira, QR code). Isso já limpa a imagem antes mesmo do OCR tentar ler.
+function aplicarFiltroVermelho(ctx, w, h) {
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const ehVermelho = r > 80 && r > g * 1.25 && r > b * 1.25;
+    const v = ehVermelho ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// Usa a foto inteira (sem precisar recortar) — isola o vermelho da placa,
+// que depois é filtrado pela busca por trechos parecidos com placas reais
+// em candidatosDePlaca()/sugestoesDePlaca().
 function prepararImagemParaOCR(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -752,19 +774,82 @@ function prepararImagemParaOCR(file) {
       canvas.height = Math.round(img.naturalHeight * escala);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const d = imgData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const cinza = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-        const contraste = Math.min(255, Math.max(0, (cinza - 128) * 1.6 + 128));
-        d[i] = d[i + 1] = d[i + 2] = contraste;
-      }
-      ctx.putImageData(imgData, 0, 0);
+      aplicarFiltroVermelho(ctx, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       canvas.toBlob((blob) => resolve(blob), 'image/png');
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Falha ao carregar imagem')); };
     img.src = url;
+  });
+}
+
+// Câmera própria (dentro da ferramenta) com um quadro-guia mostrando onde
+// alinhar a placa. Ao capturar, recorta exatamente a área do guia (na
+// resolução real da câmera) e já aplica o filtro de vermelho — não precisa
+// arrastar retângulo nenhum, só alinhar a placa dentro do quadro.
+let camStreamAtivo = null;
+function abrirCameraComGuia(statusEl) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="cam-box">
+        <p class="cam-instructions">Alinhe a placa dentro do quadro e toque em "Capturar"</p>
+        <div class="cam-viewport">
+          <video id="camVideo" autoplay playsinline muted></video>
+          <div class="cam-guide" id="camGuide"></div>
+        </div>
+        <div class="cam-actions">
+          <button type="button" class="modal-close" id="camCancelBtn">Cancelar</button>
+          <button type="button" class="btn-add" id="camCaptureBtn">📸 Capturar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const video = overlay.querySelector('#camVideo');
+    const guide = overlay.querySelector('#camGuide');
+
+    function encerrar(blob) {
+      if (camStreamAtivo) { camStreamAtivo.getTracks().forEach(t => t.stop()); camStreamAtivo = null; }
+      overlay.remove();
+      resolve(blob || null);
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })
+      .then((stream) => { camStreamAtivo = stream; video.srcObject = stream; })
+      .catch(() => {
+        if (statusEl) statusEl.textContent = '⚠️ Não consegui acessar a câmera. Verifique a permissão do navegador.';
+        encerrar(null);
+      });
+
+    overlay.querySelector('#camCancelBtn').addEventListener('click', () => encerrar(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) encerrar(null); });
+
+    overlay.querySelector('#camCaptureBtn').addEventListener('click', () => {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) return;
+
+      // mapeia o quadro-guia (posição na tela) pra coordenadas reais do vídeo,
+      // já que o vídeo é exibido com object-fit:cover (recortado/centralizado)
+      const scale = Math.max(video.clientWidth / vw, video.clientHeight / vh);
+      const offsetX = (vw - video.clientWidth / scale) / 2;
+      const offsetY = (vh - video.clientHeight / scale) / 2;
+      const gRect = guide.getBoundingClientRect();
+      const vRect = video.getBoundingClientRect();
+      const sx = offsetX + (gRect.left - vRect.left) / scale;
+      const sy = offsetY + (gRect.top - vRect.top) / scale;
+      const sw = gRect.width / scale;
+      const sh = gRect.height / scale;
+
+      const ampliar = sw < 500 ? 500 / sw : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(sw * ampliar);
+      canvas.height = Math.round(sh * ampliar);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      aplicarFiltroVermelho(ctx, canvas.width, canvas.height);
+      canvas.toBlob((blob) => encerrar(blob), 'image/png');
+    });
   });
 }
 
@@ -1025,7 +1110,14 @@ function renderPage(tab) {
   const camInput = document.getElementById(`placaCam-${tab}`);
   const camStatus = document.getElementById(`camStatus-${tab}`);
   if (camBtn && camInput) {
-    camBtn.addEventListener('click', () => camInput.click());
+    camBtn.addEventListener('click', async () => {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const blob = await abrirCameraComGuia(camStatus);
+        if (blob) processarOCR(blob, placaInput, camStatus, tab);
+      } else {
+        camInput.click(); // navegador sem suporte a câmera própria — usa o seletor/câmera nativa
+      }
+    });
     camInput.addEventListener('change', () => lerPlacaPorFoto(camInput, placaInput, camStatus, tab));
   }
 
