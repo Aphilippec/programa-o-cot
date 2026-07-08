@@ -176,6 +176,7 @@ td.ro{color:var(--tx2)}
     <div class="tb-right">
       <span class="tb-upd"><span class="tb-dot" id="liveDot"></span><span id="liveLabel">conectando…</span></span>
       <span class="tb-upd" id="lastUpd"></span>
+      <span class="tb-upd" id="heUpd"></span>
       <span class="tb-team" id="teamBadge"></span>
       <button class="btn-refresh" id="btnLogout">Sair</button>
     </div>
@@ -234,6 +235,10 @@ let currentTeam = null;
 let isAdmin = false;
 let veiculos = new Map();      // id -> veiculo
 let programacao = new Map();   // veiculo_id -> programacao
+let motoristas = new Map();    // matricula -> {matricula,nome,funcao,filial}
+let nomeToMatricula = new Map(); // nome normalizado -> matricula
+let heAtual = new Map();       // matricula -> registro de horas_extras do período mais recente
+let periodoAtualHE = null;
 let activeTab = 'geral';
 let editingKey = null;         // `${veiculoId}:${field}` do input com foco no momento
 let realtimeReady = false;
@@ -310,13 +315,68 @@ function switchTab(tab) {
 /* =====================================================================
    CARGA DE DADOS
    ===================================================================== */
+const MESES_ORDEM = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+function periodoKey(periodo) {
+  if (!periodo) return -1;
+  return MESES_ORDEM.indexOf(periodo.split('-')[0].trim().toUpperCase().slice(0, 3));
+}
+function normalizeNome(s) {
+  const semAcento = (s || '').toString().normalize('NFD').split('').filter(ch => {
+    const code = ch.charCodeAt(0);
+    return code < 0x0300 || code > 0x036f;
+  }).join('');
+  return semAcento.toUpperCase().trim().replace(/\s+/g, ' ');
+}
+function horasToHHMM(dec) {
+  if (dec == null) return '';
+  const sinal = dec < 0 ? '-' : '';
+  const abs = Math.abs(dec);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `${sinal}${h}:${String(m).padStart(2, '0')}`;
+}
+
+async function fetchAll(buildQuery) {
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+    if (error) { console.error(error); break; }
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 async function loadAll() {
-  const [{ data: vs }, { data: ps }] = await Promise.all([
-    sb.from('veiculos').select('*').eq('ativo', true),
-    sb.from('programacao').select('*'),
+  const [vs, ps, ms, hs] = await Promise.all([
+    fetchAll(() => sb.from('veiculos').select('*').eq('ativo', true)),
+    fetchAll(() => sb.from('programacao').select('*')),
+    fetchAll(() => sb.from('motoristas').select('*')),
+    fetchAll(() => sb.from('horas_extras').select('*')),
   ]);
   veiculos = new Map((vs || []).map(v => [v.id, v]));
   programacao = new Map((ps || []).map(p => [p.veiculo_id, p]));
+  motoristas = new Map((ms || []).map(m => [m.matricula, m]));
+  nomeToMatricula = new Map((ms || []).map(m => [normalizeNome(m.nome), m.matricula]));
+
+  let melhor = null, melhorKey = -1;
+  (hs || []).forEach(h => { const k = periodoKey(h.periodo); if (k > melhorKey) { melhorKey = k; melhor = h.periodo; } });
+  periodoAtualHE = melhor;
+  heAtual = new Map((hs || []).filter(h => h.periodo === periodoAtualHE).map(h => [h.matricula, h]));
+
+  let heSyncEm = null;
+  (hs || []).forEach(h => { if (h.atualizado_em && (!heSyncEm || h.atualizado_em > heSyncEm)) heSyncEm = h.atualizado_em; });
+  const heUpdEl = document.getElementById('heUpd');
+  if (heUpdEl) {
+    heUpdEl.textContent = heSyncEm
+      ? `HE (${periodoAtualHE}) sincronizada em ${new Date(heSyncEm).toLocaleString('pt-BR')}`
+      : '';
+  }
+
   rebuildSuggestions();
   renderPage(activeTab === 'historico' ? 'geral' : activeTab);
   if (activeTab !== 'historico') renderPage(activeTab);
@@ -335,6 +395,7 @@ function rebuildSuggestions() {
   for (const p of programacao.values()) {
     AC_FIELDS.forEach(f => { if (p[f]) values[f].add(p[f]); });
   }
+  for (const m of motoristas.values()) { if (m.nome) values.motorista.add(m.nome); }
   AC_FIELDS.forEach(f => { SUGGESTIONS[f] = [...values[f]].sort(); });
 }
 
@@ -510,14 +571,18 @@ function exportarCSV(tab) {
   const lista = veiculosDaEquipe(tab);
   const headers = ['Placa', 'Tipo', 'Conjunto', 'Equipe', 'Motorista', 'Status Geral', 'Status',
     'Localização', 'UF', 'Destino Final', 'UF Destino', 'Região', 'Previsão Término',
-    'Próximo Destino', 'Previsão Chegada Filial', 'Observações', 'Hora Extra', 'Produtividade'];
+    'Próximo Destino', 'Previsão Chegada Filial', 'Observações', 'HE 50% (período)', 'HE 100% (período)', 'Produtividade'];
   const rows = lista.map(v => {
     const p = programacao.get(v.id) || {};
     const ufA = extractUF(p.localizacao);
     const ufD = extractUF(p.destino_final);
+    const semPonto = !p.motorista_matricula;
+    const he = p.motorista_matricula ? heAtual.get(p.motorista_matricula) : null;
+    const he50 = semPonto ? 'Sem ponto' : horasToHHMM(he && he.he50_horas != null ? he.he50_horas : 0);
+    const he100 = semPonto ? 'Sem ponto' : horasToHHMM(he && he.he100_horas != null ? he.he100_horas : 0);
     return [v.placa, v.tipo, v.conjunto, v.equipe, p.motorista, p.status_geral, p.status,
       p.localizacao, ufA, p.destino_final, ufD, regiaoDaUF(ufD), p.previsao_termino,
-      p.proximo_destino, p.previsao_chegada_filial, p.observacoes, p.hora_extra, p.produtividade];
+      p.proximo_destino, p.previsao_chegada_filial, p.observacoes, he50, he100, p.produtividade];
   });
   const csv = String.fromCharCode(0xFEFF) + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -569,6 +634,17 @@ function veiculosDaEquipe(equipe) {
   return lista;
 }
 
+function heCellHtml(p) {
+  if (!p.motorista_matricula) {
+    return '<span class="ro muted" title="Motorista não encontrado no sistema de ponto/jornadas">Sem ponto</span>';
+  }
+  const he = heAtual.get(p.motorista_matricula);
+  const he50 = (he && he.he50_horas != null) ? he.he50_horas : 0;
+  const he100 = (he && he.he100_horas != null) ? he.he100_horas : 0;
+  const texto = `50%: ${horasToHHMM(he50)} · 100%: ${horasToHHMM(he100)}`;
+  return `<span class="ro" title="Período ${esc(periodoAtualHE || '')}">${esc(texto)}</span>`;
+}
+
 function badgeStatus(status) {
   if (!status) return '';
   const cls = STATUS_BADGE[status] || 'bn';
@@ -607,7 +683,7 @@ function renderPage(tab) {
     ['Motorista', 'motorista', 11], ['Status Geral', 'status_geral', 8], ['Status', 'status', 8],
     ['Localização', 'localizacao', 9], ['UF', null, 3], ['Destino Final', 'destino_final', 9], ['UF Dest.', null, 3], ['Região', null, 5],
     ['Prev. Térm.', 'previsao_termino', 5], ['Próx. Destino', 'proximo_destino', 7], ['Prev. Cheg. Filial', 'previsao_chegada_filial', 7],
-    ['Obs.', 'observacoes', 6], ['H. Extra', 'hora_extra', 3], ['Produtiv.', 'produtividade', 3],
+    ['Obs.', 'observacoes', 6], ['H. Extra', null, 6], ['Produtiv.', 'produtividade', 3],
     ...(editable ? [['', null, 4]] : []),
   ];
   const savedWidths = loadColWidths();
@@ -666,7 +742,7 @@ function rowHtml(v, editable, showEquipe) {
       <td class="ro" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono">${ufAtual}</td>
       <td class="ro" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
       <td class="ro mono">${esc(p.previsao_termino)}</td><td class="ro" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
-      <td class="ro muted" title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td class="ro">${esc(p.hora_extra)}</td><td class="ro">${esc(p.produtividade)}</td>
+      <td class="ro muted" title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td>${heCellHtml(p)}</td><td class="ro">${esc(p.produtividade)}</td>
     </tr>`;
   }
 
@@ -684,7 +760,7 @@ function rowHtml(v, editable, showEquipe) {
     <td>${taHtml('proximo_destino', p.proximo_destino)}</td>
     <td>${taHtml('previsao_chegada_filial', p.previsao_chegada_filial)}</td>
     <td>${taHtml('observacoes', p.observacoes)}</td>
-    <td><input class="cell-in" data-field="hora_extra" value="${esc(p.hora_extra)}"></td>
+    <td>${heCellHtml(p)}</td>
     <td><input class="cell-in" data-field="produtividade" value="${esc(p.produtividade)}"></td>
     <td>
       <button class="btn-hist" data-action="ver-historico" title="Ver histórico / desfazer">🕐</button>
@@ -776,8 +852,38 @@ async function abrirHistorico(veiculoId) {
   });
 }
 
+function isSubsequence(short, long) {
+  let idx = 0;
+  for (const tok of short) {
+    let found = false;
+    while (idx < long.length) {
+      if (long[idx] === tok) { found = true; idx++; break; }
+      idx++;
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+function resolverMatriculaPorNome(nomeDigitado) {
+  const norm = normalizeNome(nomeDigitado);
+  if (nomeToMatricula.has(norm)) return nomeToMatricula.get(norm);
+  const tokens = norm.split(' ').filter(Boolean);
+  if (tokens.length < 2) return null;
+  const candidatos = [];
+  for (const m of motoristas.values()) {
+    const longTokens = normalizeNome(m.nome).split(' ').filter(Boolean);
+    if (isSubsequence(tokens, longTokens)) candidatos.push(m.matricula);
+  }
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
 async function saveField(veiculoId, field, value) {
-  await sb.from('programacao').update({ [field]: value || null }).eq('veiculo_id', veiculoId);
+  const patch = { [field]: value || null };
+  if (field === 'motorista') {
+    patch.motorista_matricula = resolverMatriculaPorNome(value);
+  }
+  await sb.from('programacao').update(patch).eq('veiculo_id', veiculoId);
 }
 
 async function addVeiculo(equipe) {
