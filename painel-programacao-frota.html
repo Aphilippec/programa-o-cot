@@ -93,7 +93,7 @@ select.cell-in{cursor:pointer}
 td.ro{color:var(--tx2)}
 
 /* ===== Autocompletar (substitui datalist nativo p/ funcionar com textarea) ===== */
-.ac-box{position:absolute;z-index:2000;background:#fff;border:1px solid var(--brd2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:220px;overflow:auto}
+.ac-box{position:absolute;z-index:2000;background:#fff;border:1px solid var(--brd2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:220px;max-width:calc(100vw - 16px);overflow:auto}
 .ac-item{padding:6px 10px;font:500 12px 'DM Sans',sans-serif;color:var(--tx);cursor:pointer}
 .ac-item:hover{background:var(--bg3)}
 
@@ -120,7 +120,7 @@ td.ro{color:var(--tx2)}
 
 /* ===== Modal de histórico ===== */
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:1000}
-.modal-box{background:#fff;border-radius:12px;padding:20px 22px;width:520px;max-height:70vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal-box{background:#fff;border-radius:12px;padding:20px 22px;width:520px;max-width:92vw;max-height:70vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 .modal-box h3{font-family:'Syne',sans-serif;font-size:14px;color:var(--navy);margin-bottom:12px}
 .hist-item{border-bottom:1px solid var(--brd);padding:10px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .hist-item:last-child{border-bottom:none}
@@ -136,7 +136,7 @@ td.ro{color:var(--tx2)}
 
 /* ===== Login ===== */
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1B3A6B 0%,#0d2444 60%,#0a1e38 100%)}
-.login-card{background:#fff;border-radius:16px;padding:36px 34px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-card{background:#fff;border-radius:16px;padding:36px 34px;width:340px;max-width:88vw;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 .login-card h1{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--navy);margin-bottom:4px}
 .login-card p{font-size:11px;color:var(--tx3);margin-bottom:22px}
 .login-card label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:5px}
@@ -145,6 +145,57 @@ td.ro{color:var(--tx2)}
 .login-card button:hover{background:#e0951a}
 .login-err{color:var(--red);font-size:11px;margin-top:-6px;margin-bottom:10px;min-height:14px}
 .hidden{display:none !important}
+
+/* ===== Celular: tabela vira lista de cartões ===== */
+@media (max-width: 780px){
+  .topbar{height:auto;flex-wrap:wrap;padding:10px 14px;row-gap:8px}
+  .tb-sep{display:none}
+  .tb-title{order:1}
+  .logo{order:0;height:28px}
+  nav{order:3;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  nav::-webkit-scrollbar{height:4px}
+  .tb-right{order:2;margin-left:auto;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+  .tb-upd{display:none}
+  .wrap{padding:12px 10px 60px}
+  .hero{padding:14px 16px}
+  .hero-title{font-size:16px}
+  .addbar,.addbar .fld{width:100%}
+  .addbar{flex-direction:column;align-items:stretch}
+  .addbar input,.addbar select{width:100% !important}
+
+  .scroll{overflow:visible}
+  table.dt,table.dt thead,table.dt tbody,table.dt tr,table.dt th,table.dt td{display:block;width:100% !important}
+  table.dt thead{display:none}
+  table.dt tbody tr{
+    background:var(--bg2);border:1px solid var(--brd);border-radius:12px;
+    padding:4px 12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);position:static;
+  }
+  table.dt tbody tr:hover td{background:transparent}
+  table.dt td{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:8px 0;border-bottom:1px dashed var(--brd);text-align:right;position:static;
+  }
+  table.dt td:last-child{border-bottom:none}
+  table.dt td::before{
+    content:attr(data-label);font:700 10px 'Syne',sans-serif;text-transform:uppercase;
+    letter-spacing:.3px;color:var(--tx3);text-align:left;flex-shrink:0;margin-right:10px;
+  }
+  table.dt td[data-label="Placa"]{
+    font-size:15px;font-weight:800;color:var(--navy);border-bottom:2px solid var(--amber);
+    padding-bottom:10px;margin-bottom:2px;
+  }
+  table.dt td .cell-in,table.dt td textarea.cell-in,table.dt td select.cell-in,table.dt td input.cell-in{
+    text-align:right;max-width:65%;margin-left:auto;
+  }
+  input.cell-in:focus{width:100% !important;max-width:100% !important}
+  table.dt td[data-label="Ações"]{justify-content:flex-end;gap:14px}
+  table.dt td[data-label="Ações"]::before{content:''}
+  .btn-hist,.btn-del{font-size:18px;padding:6px 8px}
+
+  .modal-box{width:94vw;padding:16px}
+  .hist-item{flex-direction:column;align-items:flex-start;gap:6px}
+  .btn-restore{align-self:flex-end}
+}
 </style>
 </head>
 <body>
@@ -409,11 +460,12 @@ function showSuggestions(el, field) {
   const opts = (q ? list.filter(v => v.toLowerCase().includes(q)) : list).slice(0, 8);
   if (!opts.length) return;
   const rect = el.getBoundingClientRect();
+  const largura = Math.max(rect.width, 200);
   acBox = document.createElement('div');
   acBox.className = 'ac-box';
-  acBox.style.left = (rect.left + window.scrollX) + 'px';
+  acBox.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - largura - 8) + 'px';
   acBox.style.top = (rect.bottom + window.scrollY + 3) + 'px';
-  acBox.style.width = Math.max(rect.width, 200) + 'px';
+  acBox.style.width = largura + 'px';
   acBox.innerHTML = opts.map(o => `<div class="ac-item">${esc(o)}</div>`).join('');
   document.body.appendChild(acBox);
   [...acBox.children].forEach((item, i) => {
@@ -733,36 +785,36 @@ function rowHtml(v, editable, showEquipe) {
   const ufAtual = extractUF(p.localizacao);
   const ufDest = extractUF(p.destino_final);
   const regiao = regiaoDaUF(ufDest);
-  const equipeCell = showEquipe ? `<td class="ro mono">${v.equipe}</td>` : '';
+  const equipeCell = showEquipe ? `<td class="ro mono" data-label="Equipe">${v.equipe}</td>` : '';
 
   if (!editable) {
     return `<tr data-vid="${v.id}">
-      <td class="mono">${esc(v.placa)}</td><td class="ro">${esc(v.tipo)}</td><td class="ro">${esc(v.conjunto)}</td>${equipeCell}
-      <td class="ro" title="${esc(p.motorista)}">${esc(p.motorista)}</td><td>${badgeStatus(p.status_geral)}</td><td class="ro" title="${esc(p.status)}">${esc(p.status)}</td>
-      <td class="ro" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono">${ufAtual}</td>
-      <td class="ro" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
-      <td class="ro mono">${esc(p.previsao_termino)}</td><td class="ro" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
-      <td class="ro muted" title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td>${heCellHtml(p)}</td><td class="ro">${esc(p.produtividade)}</td>
+      <td class="mono" data-label="Placa">${esc(v.placa)}</td><td class="ro" data-label="Tipo">${esc(v.tipo)}</td><td class="ro" data-label="Conj.">${esc(v.conjunto)}</td>${equipeCell}
+      <td class="ro" data-label="Motorista" title="${esc(p.motorista)}">${esc(p.motorista)}</td><td data-label="Status Geral">${badgeStatus(p.status_geral)}</td><td class="ro" data-label="Status" title="${esc(p.status)}">${esc(p.status)}</td>
+      <td class="ro" data-label="Localização" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono" data-label="UF">${ufAtual}</td>
+      <td class="ro" data-label="Destino Final" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono" data-label="UF Dest.">${ufDest}</td><td class="ro muted" data-label="Região">${regiao}</td>
+      <td class="ro mono" data-label="Prev. Térm.">${esc(p.previsao_termino)}</td><td class="ro" data-label="Próx. Destino" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" data-label="Prev. Cheg. Filial" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
+      <td class="ro muted" data-label="Obs." title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td data-label="H. Extra">${heCellHtml(p)}</td><td class="ro" data-label="Produtiv.">${esc(p.produtividade)}</td>
     </tr>`;
   }
 
   const opts = STATUS_GERAL_OPTS.map(o => `<option value="${o}" ${p.status_geral === o ? 'selected' : ''}>${o}</option>`).join('');
   return `<tr data-vid="${v.id}">
-    <td class="mono">${v.placa}</td><td class="ro">${v.tipo || ''}</td><td class="ro">${v.conjunto || ''}</td>${equipeCell}
-    <td>${taHtml('motorista', p.motorista)}</td>
-    <td><select class="cell-in" data-field="status_geral"><option value=""></option>${opts}</select></td>
-    <td>${taHtml('status', p.status)}</td>
-    <td>${taHtml('localizacao', p.localizacao, 'CIDADE/UF')}</td>
-    <td class="ro mono">${ufAtual}</td>
-    <td>${taHtml('destino_final', p.destino_final, 'CIDADE/UF')}</td>
-    <td class="ro mono">${ufDest}</td><td class="ro muted">${regiao}</td>
-    <td><input class="cell-in" type="date" data-field="previsao_termino" value="${p.previsao_termino || ''}"></td>
-    <td>${taHtml('proximo_destino', p.proximo_destino)}</td>
-    <td>${taHtml('previsao_chegada_filial', p.previsao_chegada_filial)}</td>
-    <td>${taHtml('observacoes', p.observacoes)}</td>
-    <td>${heCellHtml(p)}</td>
-    <td><input class="cell-in" data-field="produtividade" value="${esc(p.produtividade)}"></td>
-    <td>
+    <td class="mono" data-label="Placa">${v.placa}</td><td class="ro" data-label="Tipo">${v.tipo || ''}</td><td class="ro" data-label="Conj.">${v.conjunto || ''}</td>${equipeCell}
+    <td data-label="Motorista">${taHtml('motorista', p.motorista)}</td>
+    <td data-label="Status Geral"><select class="cell-in" data-field="status_geral"><option value=""></option>${opts}</select></td>
+    <td data-label="Status">${taHtml('status', p.status)}</td>
+    <td data-label="Localização">${taHtml('localizacao', p.localizacao, 'CIDADE/UF')}</td>
+    <td class="ro mono" data-label="UF">${ufAtual}</td>
+    <td data-label="Destino Final">${taHtml('destino_final', p.destino_final, 'CIDADE/UF')}</td>
+    <td class="ro mono" data-label="UF Dest.">${ufDest}</td><td class="ro muted" data-label="Região">${regiao}</td>
+    <td data-label="Prev. Térm."><input class="cell-in" type="date" data-field="previsao_termino" value="${p.previsao_termino || ''}"></td>
+    <td data-label="Próx. Destino">${taHtml('proximo_destino', p.proximo_destino)}</td>
+    <td data-label="Prev. Cheg. Filial">${taHtml('previsao_chegada_filial', p.previsao_chegada_filial)}</td>
+    <td data-label="Obs.">${taHtml('observacoes', p.observacoes)}</td>
+    <td data-label="H. Extra">${heCellHtml(p)}</td>
+    <td data-label="Produtiv."><input class="cell-in" data-field="produtividade" value="${esc(p.produtividade)}"></td>
+    <td data-label="Ações">
       <button class="btn-hist" data-action="ver-historico" title="Ver histórico / desfazer">🕐</button>
       <button class="btn-del" data-action="del-veiculo" title="Remover veículo">✕</button>
     </td>
