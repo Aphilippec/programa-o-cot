@@ -97,6 +97,39 @@ td.ro{color:var(--tx2)}
 .ac-item{padding:6px 10px;font:500 12px 'DM Sans',sans-serif;color:var(--tx);cursor:pointer}
 .ac-item:hover{background:var(--bg3)}
 
+/* ===== Resumo de status ===== */
+.resumo-card{border:1px solid var(--brd);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.resumo-head{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg2);border:none;cursor:pointer;text-align:left;font:600 12px 'DM Sans',sans-serif;color:var(--tx)}
+.resumo-head:hover{background:var(--bg3)}
+.resumo-count{color:var(--tx3);font-size:12px}
+.resumo-arrow{margin-left:auto;transition:transform .15s;color:var(--tx3)}
+.resumo-head.open .resumo-arrow{transform:rotate(180deg)}
+.resumo-list{border-top:1px solid var(--brd)}
+
+/* ===== Filtro rápido de placa (funciona no celular também) ===== */
+.placa-filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.placa-filter-bar input[type=text]{flex:1;min-width:140px;height:38px;border:1px solid var(--brd2);border-radius:8px;padding:0 12px;font:600 13px 'DM Mono',monospace;text-transform:uppercase;background:var(--bg2);color:var(--tx)}
+.placa-filter-bar input::placeholder{font-family:'DM Sans',sans-serif;text-transform:none;font-weight:500}
+.btn-cam{height:38px;width:38px;flex-shrink:0;border-radius:8px;border:1px solid var(--brd2);background:var(--bg2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.btn-cam:hover{border-color:var(--amber)}
+.cam-status{width:100%;font-size:11px;color:var(--tx3);margin-bottom:8px;min-height:14px}
+.ocr-sug-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.ocr-sug-btn{height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--brd2);background:var(--bg2);font:700 11px 'DM Mono',monospace;cursor:pointer;color:var(--navy)}
+.ocr-sug-btn:hover{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+.crop-box{background:#fff;border-radius:12px;padding:18px 20px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.crop-box h3{font-family:'Syne',sans-serif;font-size:14px;color:var(--navy);margin-bottom:4px}
+.crop-hint{font-size:11px;color:var(--tx3);margin-bottom:12px}
+.crop-canvas-wrap{display:flex;justify-content:center;margin-bottom:14px}
+#cropCanvas{touch-action:none;cursor:crosshair;border-radius:8px;max-width:100%;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+
+/* ===== Produtividade (Km x meta) ===== */
+.prod-cell{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.prod-top{display:flex;align-items:baseline;gap:6px;white-space:nowrap}
+.prod-pct{font-family:'DM Mono',monospace;font-weight:700;font-size:10.5px}
+.prod-bar{width:100%;max-width:90px;height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.prod-bar-fill{display:block;height:100%;border-radius:2px}
+
 /* ===== Badges ===== */
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap}
 .bg2c{background:rgba(46,125,50,.1);color:var(--green)}
@@ -228,6 +261,7 @@ td.ro{color:var(--tx2)}
       <span class="tb-upd"><span class="tb-dot" id="liveDot"></span><span id="liveLabel">conectando…</span></span>
       <span class="tb-upd" id="lastUpd"></span>
       <span class="tb-upd" id="heUpd"></span>
+      <span class="tb-upd" id="prodUpd"></span>
       <span class="tb-team" id="teamBadge"></span>
       <button class="btn-refresh" id="btnLogout">Sair</button>
     </div>
@@ -290,6 +324,8 @@ let motoristas = new Map();    // matricula -> {matricula,nome,funcao,filial}
 let nomeToMatricula = new Map(); // nome normalizado -> matricula
 let heAtual = new Map();       // matricula -> registro de horas_extras do período mais recente
 let periodoAtualHE = null;
+let produtividadeAtual = new Map(); // placa -> registro de produtividade do período mais recente
+let periodoAtualProdutividade = null;
 let activeTab = 'geral';
 let editingKey = null;         // `${veiculoId}:${field}` do input com foco no momento
 let realtimeReady = false;
@@ -342,7 +378,7 @@ async function afterLogin(user) {
 function buildTabs() {
   const nav = document.getElementById('navTabs');
   const pages = document.getElementById('pages');
-  const tabs = [{ key: 'geral', label: 'Visão Geral' }, ...EQUIPES.map(e => ({ key: e, label: e })), { key: 'historico', label: 'Histórico' }];
+  const tabs = [{ key: 'geral', label: 'Visão Geral' }, { key: 'resumo', label: 'Resumo' }, ...EQUIPES.map(e => ({ key: e, label: e })), { key: 'historico', label: 'Histórico' }];
   nav.innerHTML = tabs.map(t => {
     const mine = (t.key === currentTeam || (isAdmin && EQUIPES.includes(t.key))) ? ' mine' : '';
     return `<button class="nav-btn${t.key === activeTab ? ' active' : ''}${mine}" data-tab="${t.key}">${t.label}</button>`;
@@ -360,6 +396,7 @@ function switchTab(tab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tab}`));
   if (tab === 'historico') renderHistorico();
+  else if (tab === 'resumo') renderResumo();
   else renderPage(tab);
 }
 
@@ -370,6 +407,13 @@ const MESES_ORDEM = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SE
 function periodoKey(periodo) {
   if (!periodo) return -1;
   return MESES_ORDEM.indexOf(periodo.split('-')[0].trim().toUpperCase().slice(0, 3));
+}
+const MESES_ORDEM_FULL = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+function periodoMesAnoKey(periodo) {
+  if (!periodo) return -1;
+  const [mes, ano] = periodo.split('/');
+  const idx = MESES_ORDEM_FULL.indexOf(normalizeNome(mes));
+  return (parseInt(ano, 10) || 0) * 100 + (idx >= 0 ? idx : -1);
 }
 function normalizeNome(s) {
   const semAcento = (s || '').toString().normalize('NFD').split('').filter(ch => {
@@ -403,11 +447,12 @@ async function fetchAll(buildQuery) {
 }
 
 async function loadAll() {
-  const [vs, ps, ms, hs] = await Promise.all([
+  const [vs, ps, ms, hs, pds] = await Promise.all([
     fetchAll(() => sb.from('veiculos').select('*').eq('ativo', true)),
     fetchAll(() => sb.from('programacao').select('*')),
     fetchAll(() => sb.from('motoristas').select('*')),
     fetchAll(() => sb.from('horas_extras').select('*')),
+    fetchAll(() => sb.from('produtividade_veiculos').select('*')),
   ]);
   veiculos = new Map((vs || []).map(v => [v.id, v]));
   programacao = new Map((ps || []).map(p => [p.veiculo_id, p]));
@@ -419,6 +464,11 @@ async function loadAll() {
   periodoAtualHE = melhor;
   heAtual = new Map((hs || []).filter(h => h.periodo === periodoAtualHE).map(h => [h.matricula, h]));
 
+  let melhorProd = null, melhorProdKey = -1;
+  (pds || []).forEach(p => { const k = periodoMesAnoKey(p.periodo); if (k > melhorProdKey) { melhorProdKey = k; melhorProd = p.periodo; } });
+  periodoAtualProdutividade = melhorProd;
+  produtividadeAtual = new Map((pds || []).filter(p => p.periodo === periodoAtualProdutividade).map(p => [p.placa, p]));
+
   let heSyncEm = null;
   (hs || []).forEach(h => { if (h.atualizado_em && (!heSyncEm || h.atualizado_em > heSyncEm)) heSyncEm = h.atualizado_em; });
   const heUpdEl = document.getElementById('heUpd');
@@ -428,9 +478,19 @@ async function loadAll() {
       : '';
   }
 
+  let prodSyncEm = null;
+  (pds || []).forEach(p => { if (p.atualizado_em && (!prodSyncEm || p.atualizado_em > prodSyncEm)) prodSyncEm = p.atualizado_em; });
+  const prodUpdEl = document.getElementById('prodUpd');
+  if (prodUpdEl) {
+    prodUpdEl.textContent = prodSyncEm
+      ? `Produtividade (${periodoAtualProdutividade}) sincronizada em ${new Date(prodSyncEm).toLocaleString('pt-BR')}`
+      : '';
+  }
+
   rebuildSuggestions();
-  renderPage(activeTab === 'historico' ? 'geral' : activeTab);
-  if (activeTab !== 'historico') renderPage(activeTab);
+  if (activeTab === 'historico') { /* histórico não usa dados ao vivo */ }
+  else if (activeTab === 'resumo') renderResumo();
+  else renderPage(activeTab);
 }
 
 /* =====================================================================
@@ -612,6 +672,223 @@ function applyFilterUpdate(tab) {
 }
 
 /* =====================================================================
+   LEITURA DE PLACA POR FOTO (OCR local, gratuito — Tesseract.js)
+   ===================================================================== */
+let tesseractCarregado = null;
+function carregarTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  if (tesseractCarregado) return tesseractCarregado;
+  tesseractCarregado = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Falha ao carregar leitor de placas'));
+    document.head.appendChild(script);
+  });
+  return tesseractCarregado;
+}
+
+// 3 letras (muito confiável no OCR) + 4 letras/números (onde costuma confundir 0/O, 1/I, G/0 etc.)
+const PLACA_FOTO_RE = /^[A-Z]{3}[A-Z0-9]{4}$/;
+
+// Procura TODO trecho de 7 caracteres no texto lido que tenha o formato de
+// placa — assim funciona mesmo com "BRASIL", bandeira etc. junto na mesma foto,
+// já que essas palavras não vão bater no formato/na lista de placas reais.
+function candidatosDePlaca(texto) {
+  const candidatos = [];
+  for (let i = 0; i + 7 <= texto.length; i++) {
+    const janela = texto.substr(i, 7);
+    if (PLACA_FOTO_RE.test(janela)) candidatos.push(janela);
+  }
+  return candidatos;
+}
+
+function distanciaHamming(a, b) {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+}
+
+// Lista as placas reais cadastradas mais parecidas com o palpite do OCR,
+// ordenadas da mais parecida pra menos (0 = idêntica).
+function sugestoesDePlaca(candidata, max = 5) {
+  if (!candidata || candidata.length !== 7) return [];
+  const lista = [];
+  for (const v of veiculos.values()) {
+    const d = distanciaHamming(candidata, v.placa);
+    if (d <= 3) lista.push({ placa: v.placa, dist: d });
+  }
+  lista.sort((a, b) => a.dist - b.dist);
+  return lista.slice(0, max);
+}
+
+function aplicarPlacaFiltro(placa, placaInput, tab, statusEl, msg) {
+  placaInput.value = placa;
+  columnFilters.placa = placa;
+  applyFilterUpdate(tab);
+  if (statusEl) statusEl.textContent = msg || `✅ Filtrando por ${placa}`;
+}
+
+async function lerPlacaPorFoto(fileInput, placaInput, statusEl, tab) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  abrirRecorteImagem(file, (blob) => {
+    fileInput.value = '';
+    if (blob) processarOCR(blob, placaInput, statusEl, tab);
+  });
+}
+
+async function processarOCR(blob, placaInput, statusEl, tab) {
+  statusEl.textContent = '📡 Carregando leitor de placas (só na primeira vez)...';
+  try {
+    await carregarTesseract();
+    statusEl.textContent = '🔎 Lendo a placa recortada...';
+    const worker = await window.Tesseract.createWorker('eng');
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6', // bloco único de texto (aceita "BRASIL" + placa em linhas diferentes)
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+    });
+    const { data } = await worker.recognize(blob);
+    await worker.terminate();
+    const limpo = (data.text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const candidatos = candidatosDePlaca(limpo);
+
+    if (candidatos.length) {
+      // pra cada trecho candidato, acha a placa real mais parecida — fica com a melhor de todas
+      let melhorGeral = null;
+      const todasSugestoes = [];
+      candidatos.forEach(cand => {
+        const sugs = sugestoesDePlaca(cand, 5);
+        sugs.forEach(s => {
+          todasSugestoes.push(s);
+          if (!melhorGeral || s.dist < melhorGeral.dist) melhorGeral = { ...s, bruta: cand };
+        });
+      });
+
+      if (melhorGeral && melhorGeral.dist === 0) {
+        aplicarPlacaFiltro(melhorGeral.placa, placaInput, tab, statusEl, `✅ Placa lida: ${melhorGeral.placa}`);
+      } else {
+        const bruta = melhorGeral ? melhorGeral.bruta : candidatos[0];
+        placaInput.value = bruta;
+        columnFilters.placa = bruta;
+        applyFilterUpdate(tab);
+        const unicas = [...new Map(todasSugestoes.map(s => [s.placa, s])).values()].sort((a, b) => a.dist - b.dist).slice(0, 5);
+        const chips = unicas.map(s => `<button type="button" class="ocr-sug-btn" data-placa="${esc(s.placa)}">${esc(s.placa)}</button>`).join('');
+        statusEl.innerHTML = `⚠️ O leitor entendeu "${esc(bruta)}" — clica na placa certa:` +
+          (chips ? `<div class="ocr-sug-list">${chips}</div>` : ' nenhuma parecida encontrada, digite manualmente.');
+        statusEl.querySelectorAll('.ocr-sug-btn').forEach(btn => {
+          btn.addEventListener('click', () => aplicarPlacaFiltro(btn.dataset.placa, placaInput, tab, statusEl, `✅ Filtrando por ${btn.dataset.placa}`));
+        });
+      }
+    } else {
+      const bruto = limpo || '(nada)';
+      statusEl.textContent = `⚠️ Não achei o padrão de placa. O leitor entendeu: "${bruto}" — tenta recortar mais justo (só letras/números, sem a moldura azul/BRASIL).`;
+      console.log('[OCR placa] texto bruto lido:', data.text);
+    }
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = '⚠️ Erro ao ler a foto. Tenta de novo ou digita a placa manualmente.';
+  }
+}
+
+/* Deixa a pessoa arrastar um retângulo em cima da foto pra recortar só a
+   placa — sem isso, o OCR tenta ler a foto do caminhão inteiro (grade,
+   logos, etc.) e erra muito. Também aplica preto-e-branco + contraste,
+   que ajuda bastante o OCR a distinguir as letras/números. */
+function abrirRecorteImagem(file, onDone) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="crop-box">
+      <h3>Selecione a área da placa</h3>
+      <p class="crop-hint">Arraste um retângulo bem justo ao redor da placa e solte</p>
+      <div class="crop-canvas-wrap"><canvas id="cropCanvas"></canvas></div>
+      <button class="modal-close" id="cropCancelBtn">Cancelar</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const canvas = overlay.querySelector('#cropCanvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  let scale = 1, sel = null, dragging = false, start = null;
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (sel) {
+      ctx.strokeStyle = '#F5A623';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
+      ctx.fillStyle = 'rgba(245,166,35,.15)';
+      ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
+    }
+  }
+
+  function pos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  function limpar() {
+    URL.revokeObjectURL(url);
+    overlay.remove();
+  }
+
+  function finalizarRecorte() {
+    const sx = sel.x / scale, sy = sel.y / scale, sw = sel.w / scale, sh = sel.h / scale;
+    const escalaSaida = sw < 300 ? 300 / sw : 1;
+    const out = document.createElement('canvas');
+    out.width = Math.round(sw * escalaSaida);
+    out.height = Math.round(sh * escalaSaida);
+    const octx = out.getContext('2d');
+    octx.drawImage(img, sx, sy, sw, sh, 0, 0, out.width, out.height);
+
+    const imgData = octx.getImageData(0, 0, out.width, out.height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const cinza = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const contraste = Math.min(255, Math.max(0, (cinza - 128) * 1.6 + 128));
+      d[i] = d[i + 1] = d[i + 2] = contraste;
+    }
+    octx.putImageData(imgData, 0, 0);
+
+    out.toBlob((blob) => { limpar(); onDone(blob); }, 'image/png');
+  }
+
+  img.onload = () => {
+    const maxW = Math.min(window.innerWidth * 0.86, 560);
+    const maxH = window.innerHeight * 0.55;
+    scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    canvas.width = img.naturalWidth * scale;
+    canvas.height = img.naturalHeight * scale;
+    draw();
+
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      start = pos(e);
+      sel = { x: start.x, y: start.y, w: 0, h: 0 };
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const p = pos(e);
+      sel = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
+      draw();
+    });
+    canvas.addEventListener('pointerup', () => {
+      dragging = false;
+      if (!sel || sel.w < 15 || sel.h < 8) { sel = null; draw(); return; }
+      finalizarRecorte();
+    });
+  };
+  img.src = url;
+
+  overlay.querySelector('#cropCancelBtn').addEventListener('click', () => { limpar(); onDone(null); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { limpar(); onDone(null); } });
+}
+
+/* =====================================================================
    EXPORTAR CSV (respeita os filtros ativos no momento)
    ===================================================================== */
 function csvCell(v) {
@@ -623,7 +900,8 @@ function exportarCSV(tab) {
   const lista = veiculosDaEquipe(tab);
   const headers = ['Placa', 'Tipo', 'Conjunto', 'Equipe', 'Motorista', 'Status Geral', 'Status',
     'Localização', 'UF', 'Destino Final', 'UF Destino', 'Região', 'Previsão Término',
-    'Próximo Destino', 'Previsão Chegada Filial', 'Observações', 'HE 50% (período)', 'HE 100% (período)', 'Produtividade'];
+    'Próximo Destino', 'Previsão Chegada Filial', 'Observações', 'HE 50% (período)', 'HE 100% (período)',
+    'Km Percorrido (período)', 'Km/Dia (período)', 'Vel. Média (km/h)'];
   const rows = lista.map(v => {
     const p = programacao.get(v.id) || {};
     const ufA = extractUF(p.localizacao);
@@ -632,9 +910,11 @@ function exportarCSV(tab) {
     const he = p.motorista_matricula ? heAtual.get(p.motorista_matricula) : null;
     const he50 = semPonto ? 'Sem ponto' : horasToHHMM(he && he.he50_horas != null ? he.he50_horas : 0);
     const he100 = semPonto ? 'Sem ponto' : horasToHHMM(he && he.he100_horas != null ? he.he100_horas : 0);
+    const prod = produtividadeAtual.get(v.placa);
     return [v.placa, v.tipo, v.conjunto, v.equipe, p.motorista, p.status_geral, p.status,
       p.localizacao, ufA, p.destino_final, ufD, regiaoDaUF(ufD), p.previsao_termino,
-      p.proximo_destino, p.previsao_chegada_filial, p.observacoes, he50, he100, p.produtividade];
+      p.proximo_destino, p.previsao_chegada_filial, p.observacoes, he50, he100,
+      prod ? prod.km_percorrido : 'Sem rastreador', prod ? prod.km_dia : '', prod ? prod.vel_media : ''];
   });
   const csv = String.fromCharCode(0xFEFF) + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -697,6 +977,33 @@ function heCellHtml(p) {
   return `<span class="ro" title="Período ${esc(periodoAtualHE || '')}">${esc(texto)}</span>`;
 }
 
+const META_KM_MENSAL = 10000;
+
+function produtividadeCellHtml(v, p) {
+  const semMeta = p && p.status_geral === 'Dedicado';
+  const prod = produtividadeAtual.get(v.placa);
+  if (!prod || prod.km_percorrido == null) {
+    return '<span class="ro muted" title="Sem leitura de rastreador nesse período">Sem rastreador</span>';
+  }
+  const km = Math.round(prod.km_percorrido);
+  const kmTxt = km.toLocaleString('pt-BR');
+  const kmDia = prod.km_dia != null ? Math.round(prod.km_dia).toLocaleString('pt-BR') : '—';
+  const dica = `Período ${prod.periodo} · ${kmDia} km/dia` +
+    (prod.vel_media != null ? ' · Vel. média ' + Math.round(prod.vel_media) + ' km/h' : '') +
+    (prod.dias_operacao != null ? ' · ' + prod.dias_operacao + ' dias em operação' : '') +
+    (semMeta ? '' : ' · Meta: ' + META_KM_MENSAL.toLocaleString('pt-BR') + ' km');
+
+  if (semMeta) {
+    return `<span class="ro" title="${esc(dica)}">${kmTxt} km</span>`;
+  }
+  const pct = Math.round((km / META_KM_MENSAL) * 100);
+  const cor = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : 'var(--red)';
+  return `<span class="prod-cell" title="${esc(dica)}">
+    <span class="prod-top"><span class="mono">${kmTxt} km</span><span class="prod-pct" style="color:${cor}">${pct}%</span></span>
+    <span class="prod-bar"><span class="prod-bar-fill" style="width:${Math.min(100, pct)}%;background:${cor}"></span></span>
+  </span>`;
+}
+
 function badgeStatus(status) {
   if (!status) return '';
   const cls = STATUS_BADGE[status] || 'bn';
@@ -712,6 +1019,14 @@ function renderPage(tab) {
   const header = tab === 'geral'
     ? `<div class="hero"><div><div class="hero-title">Visão <span>Geral</span> da Frota</div><div class="hero-sub">Todos os veículos de todas as equipes · somente leitura</div></div></div>`
     : `<div class="hero"><div><div class="hero-title">Equipe <span>${tab}</span></div><div class="hero-sub">${editable ? 'Você pode editar os veículos desta equipe' : 'Somente leitura — pertence a outra equipe'}</div></div></div>`;
+
+  const placaFilterBar = `
+    <div class="placa-filter-bar">
+      <input type="text" id="placaSearch-${tab}" placeholder="🔍 Filtrar por placa..." value="${esc(columnFilters.placa || '')}" autocomplete="off">
+      <button type="button" class="btn-cam" id="btnCam-${tab}" title="Tirar foto da placa">📷</button>
+      <input type="file" accept="image/*" capture="environment" id="placaCam-${tab}" class="hidden">
+    </div>
+    <div class="cam-status" id="camStatus-${tab}"></div>`;
 
   const addForm = editable ? `
     <div class="addbar">
@@ -735,7 +1050,7 @@ function renderPage(tab) {
     ['Motorista', 'motorista', 11], ['Status Geral', 'status_geral', 8], ['Status', 'status', 8],
     ['Localização', 'localizacao', 9], ['UF', null, 3], ['Destino Final', 'destino_final', 9], ['UF Dest.', null, 3], ['Região', null, 5],
     ['Prev. Térm.', 'previsao_termino', 5], ['Próx. Destino', 'proximo_destino', 7], ['Prev. Cheg. Filial', 'previsao_chegada_filial', 7],
-    ['Obs.', 'observacoes', 6], ['H. Extra', null, 6], ['Produtiv.', 'produtividade', 3],
+    ['Obs.', 'observacoes', 6], ['H. Extra', null, 6], ['Produtiv.', null, 7],
     ...(editable ? [['', null, 4]] : []),
   ];
   const savedWidths = loadColWidths();
@@ -754,6 +1069,7 @@ function renderPage(tab) {
     <div class="cc">
       <div class="cc-t">Veículos${tab !== 'geral' ? ' — ' + tab : ''}</div>
       <div class="cc-s" id="count-${tab}">${lista.length} veículo(s) · clique no nome da coluna pra ordenar, no ▾ pra filtrar, e arraste a borda pra redimensionar</div>
+      ${placaFilterBar}
       ${addForm}
       ${exportBar}
       <div class="scroll"><table class="dt">
@@ -764,6 +1080,21 @@ function renderPage(tab) {
   attachColResize(page.querySelector('table.dt thead tr'));
   attachColFilters(page.querySelector('table.dt thead tr'), tab);
   attachColSort(page.querySelector('table.dt thead tr'), tab);
+
+  const placaInput = document.getElementById(`placaSearch-${tab}`);
+  if (placaInput) {
+    placaInput.addEventListener('input', () => {
+      columnFilters.placa = placaInput.value;
+      applyFilterUpdate(tab);
+    });
+  }
+  const camBtn = document.getElementById(`btnCam-${tab}`);
+  const camInput = document.getElementById(`placaCam-${tab}`);
+  const camStatus = document.getElementById(`camStatus-${tab}`);
+  if (camBtn && camInput) {
+    camBtn.addEventListener('click', () => camInput.click());
+    camInput.addEventListener('change', () => lerPlacaPorFoto(camInput, placaInput, camStatus, tab));
+  }
 
   if (editable) document.getElementById('btnAddVeiculo').addEventListener('click', () => addVeiculo(tab));
   if (tab === 'geral') document.getElementById('btnExportar').addEventListener('click', () => exportarCSV(tab));
@@ -794,7 +1125,7 @@ function rowHtml(v, editable, showEquipe) {
       <td class="ro" data-label="Localização" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono" data-label="UF">${ufAtual}</td>
       <td class="ro" data-label="Destino Final" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono" data-label="UF Dest.">${ufDest}</td><td class="ro muted" data-label="Região">${regiao}</td>
       <td class="ro mono" data-label="Prev. Térm.">${esc(p.previsao_termino)}</td><td class="ro" data-label="Próx. Destino" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" data-label="Prev. Cheg. Filial" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
-      <td class="ro muted" data-label="Obs." title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td data-label="H. Extra">${heCellHtml(p)}</td><td class="ro" data-label="Produtiv.">${esc(p.produtividade)}</td>
+      <td class="ro muted" data-label="Obs." title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td data-label="H. Extra">${heCellHtml(p)}</td><td data-label="Produtiv.">${produtividadeCellHtml(v, p)}</td>
     </tr>`;
   }
 
@@ -813,7 +1144,7 @@ function rowHtml(v, editable, showEquipe) {
     <td data-label="Prev. Cheg. Filial">${taHtml('previsao_chegada_filial', p.previsao_chegada_filial)}</td>
     <td data-label="Obs.">${taHtml('observacoes', p.observacoes)}</td>
     <td data-label="H. Extra">${heCellHtml(p)}</td>
-    <td data-label="Produtiv."><input class="cell-in" data-field="produtividade" value="${esc(p.produtividade)}"></td>
+    <td data-label="Produtiv.">${produtividadeCellHtml(v, p)}</td>
     <td data-label="Ações">
       <button class="btn-hist" data-action="ver-historico" title="Ver histórico / desfazer">🕐</button>
       <button class="btn-del" data-action="del-veiculo" title="Remover veículo">✕</button>
@@ -988,11 +1319,13 @@ function handleVeiculoChange(payload) {
   else veiculos.set(row.id, payload.new);
   touchLastUpd();
   // mudança estrutural (equipe/ativo) — mais simples re-renderizar as páginas visíveis
-  if (activeTab !== 'historico') renderPage(activeTab);
+  if (activeTab === 'resumo') renderResumo();
+  else if (activeTab !== 'historico') renderPage(activeTab);
 }
 
 function refreshVisibleRow(veiculoId) {
   if (activeTab === 'historico') return;
+  if (activeTab === 'resumo') { renderResumo(); return; }
   const v = veiculos.get(veiculoId);
   if (!v) return;
   const tbody = document.getElementById(`tbody-${activeTab}`);
@@ -1007,6 +1340,60 @@ function refreshVisibleRow(veiculoId) {
     newTr.classList.add('flash');
     if (editable) attachRowHandlers(newTr);
   }
+}
+
+/* =====================================================================
+   RESUMO DE STATUS
+   ===================================================================== */
+function renderResumo() {
+  const page = document.getElementById('page-resumo');
+  if (!page) return;
+
+  const grupos = {};
+  STATUS_GERAL_OPTS.forEach(s => grupos[s] = []);
+  grupos['(sem status)'] = [];
+  [...veiculos.values()].forEach(v => {
+    const p = programacao.get(v.id) || {};
+    const key = (p.status_geral && grupos[p.status_geral]) ? p.status_geral : '(sem status)';
+    grupos[key].push({ v, p });
+  });
+
+  const cardsHtml = Object.entries(grupos).filter(([, items]) => items.length).map(([status, items]) => {
+    items.sort((a, b) => a.v.placa.localeCompare(b.v.placa));
+    const cls = STATUS_BADGE[status] || 'bn';
+    const linhas = items.map(({ v, p }) => `<tr>
+      <td class="mono" data-label="Placa">${esc(v.placa)}</td>
+      <td class="mono" data-label="Equipe">${esc(v.equipe)}</td>
+      <td data-label="Motorista">${esc(p.motorista)}</td>
+      <td data-label="Localização">${esc(p.localizacao)}</td>
+      <td data-label="Destino">${esc(p.destino_final)}</td>
+    </tr>`).join('');
+    return `<div class="resumo-card">
+      <button class="resumo-head" type="button">
+        <span class="badge ${cls}">${esc(status)}</span>
+        <span class="resumo-count">${items.length} veículo(s)</span>
+        <span class="resumo-arrow">▾</span>
+      </button>
+      <div class="resumo-list hidden">
+        <div class="scroll"><table class="dt">
+          <thead><tr><th>Placa</th><th>Equipe</th><th>Motorista</th><th>Localização</th><th>Destino</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div class="hero"><div><div class="hero-title">Resumo <span>de Status</span></div><div class="hero-sub">Clique num status pra ver as placas — todas as equipes</div></div></div>
+    <div class="cc">${cardsHtml || '<div class="muted">Nenhum veículo cadastrado ainda.</div>'}</div>`;
+
+  page.querySelectorAll('.resumo-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const list = head.nextElementSibling;
+      list.classList.toggle('hidden');
+      head.classList.toggle('open');
+    });
+  });
 }
 
 /* =====================================================================
