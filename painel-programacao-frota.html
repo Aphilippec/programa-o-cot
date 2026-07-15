@@ -351,7 +351,7 @@ function heroDetailHtml(tab, status, lista) {
       <td class="mono" data-label="Placa">${esc(v.placa)}</td>
       ${showEquipe ? `<td class="mono" data-label="Equipe">${esc(v.equipe)}</td>` : ''}
       <td data-label="Motorista">${esc(p.motorista)}</td>
-      <td data-label="Localização">${esc(p.localizacao)}</td>
+      <td data-label="Localização">${esc(localizacaoTexto(v))}</td>
       <td data-label="Destino">${esc(p.destino_final)}</td>
     </tr>`;
   }).join('');
@@ -400,6 +400,7 @@ let heAtual = new Map();       // matricula -> registro de horas_extras do perí
 let periodoAtualHE = null;
 let produtividadeAtual = new Map(); // placa -> registro de produtividade do período mais recente
 let periodoAtualProdutividade = null;
+let localizacaoAtual = new Map(); // placa -> registro de localizacao_veiculos (GPS mais recente)
 let activeTab = 'geral';
 let editingKey = null;         // `${veiculoId}:${field}` do input com foco no momento
 let realtimeReady = false;
@@ -520,17 +521,19 @@ async function fetchAll(buildQuery) {
 }
 
 async function loadAll() {
-  const [vs, ps, ms, hs, pds] = await Promise.all([
+  const [vs, ps, ms, hs, pds, lvs] = await Promise.all([
     fetchAll(() => sb.from('veiculos').select('*').eq('ativo', true)),
     fetchAll(() => sb.from('programacao').select('*')),
     fetchAll(() => sb.from('motoristas').select('*')),
     fetchAll(() => sb.from('horas_extras').select('*')),
     fetchAll(() => sb.from('produtividade_veiculos').select('*')),
+    fetchAll(() => sb.from('localizacao_veiculos').select('*')),
   ]);
   veiculos = new Map((vs || []).map(v => [v.id, v]));
   programacao = new Map((ps || []).map(p => [p.veiculo_id, p]));
   motoristas = new Map((ms || []).map(m => [m.matricula, m]));
   nomeToMatricula = new Map((ms || []).map(m => [normalizeNome(m.nome), m.matricula]));
+  localizacaoAtual = new Map((lvs || []).map(l => [l.placa, l]));
 
   let melhor = null, melhorKey = -1;
   (hs || []).forEach(h => { const k = periodoKey(h.periodo); if (k > melhorKey) { melhorKey = k; melhor = h.periodo; } });
@@ -994,7 +997,7 @@ function exportarCSV(tab) {
     'Km Percorrido (período)', 'Km/Dia (período)', 'Vel. Média (km/h)'];
   const rows = lista.map(v => {
     const p = programacao.get(v.id) || {};
-    const ufA = extractUF(p.localizacao);
+    const ufA = localizacaoUF(v);
     const ufD = extractUF(p.destino_final);
     const semPonto = !p.motorista_matricula;
     const he = p.motorista_matricula ? heAtual.get(p.motorista_matricula) : null;
@@ -1002,7 +1005,7 @@ function exportarCSV(tab) {
     const he100 = semPonto ? 'Sem ponto' : horasToHHMM(he && he.he100_horas != null ? he.he100_horas : 0);
     const prod = produtividadeAtual.get(v.placa);
     return [v.placa, v.tipo, v.conjunto, v.equipe, p.motorista, p.status_geral, p.status,
-      p.localizacao, ufA, p.destino_final, ufD, regiaoDaUF(ufD), p.previsao_termino,
+      localizacaoTexto(v), ufA, p.destino_final, ufD, regiaoDaUF(ufD), p.previsao_termino,
       p.proximo_destino, p.previsao_chegada_filial, p.observacoes, he50, he100,
       prod ? prod.km_percorrido : 'Sem rastreador', prod ? prod.km_dia : '', prod ? prod.vel_media : ''];
   });
@@ -1024,6 +1027,7 @@ function exportarCSV(tab) {
 const VEICULO_FIELDS = new Set(['placa', 'tipo', 'conjunto', 'equipe']);
 function fieldValue(v, p, field) {
   if (!field) return null;
+  if (field === 'localizacao') return localizacaoTexto(v);
   if (VEICULO_FIELDS.has(field)) return v[field];
   return p ? p[field] : null;
 }
@@ -1054,6 +1058,39 @@ function veiculosDaEquipe(equipe) {
     lista.sort((a, b) => a.placa.localeCompare(b.placa));
   }
   return lista;
+}
+
+function temGpsLocalizacao(v) {
+  const loc = localizacaoAtual.get(v.placa);
+  return !!(loc && loc.cidade);
+}
+function localizacaoTexto(v) {
+  const loc = localizacaoAtual.get(v.placa);
+  if (loc && loc.cidade) return `${loc.cidade}/${loc.uf || ''}`;
+  const p = programacao.get(v.id);
+  return (p && p.localizacao) ? p.localizacao : '';
+}
+function localizacaoUF(v) {
+  const loc = localizacaoAtual.get(v.placa);
+  if (loc && loc.uf && UF_REGIAO[loc.uf]) return loc.uf;
+  const p = programacao.get(v.id);
+  return extractUF(p && p.localizacao);
+}
+// GPS presente: sempre automático e travado. Sem GPS: libera edição manual
+// (reaproveita a própria coluna programacao.localizacao como fallback).
+function localizacaoCellHtml(v, p, editable) {
+  if (temGpsLocalizacao(v)) {
+    const loc = localizacaoAtual.get(v.placa);
+    const texto = `${loc.cidade}/${loc.uf || ''}`;
+    const quando = loc.data_posicao ? new Date(loc.data_posicao).toLocaleString('pt-BR') : '';
+    return `<span class="ro" title="${esc('Posição via GPS em ' + quando)}">${esc(texto)}</span>`;
+  }
+  if (editable) {
+    return taHtml('localizacao', p.localizacao, 'CIDADE/UF (sem GPS — digite manualmente)');
+  }
+  return p.localizacao
+    ? `<span class="ro" title="${esc(p.localizacao)}">${esc(p.localizacao)}</span>`
+    : '<span class="ro muted" title="Sem sinal de rastreador">Sem rastreador</span>';
 }
 
 function heCellHtml(p) {
@@ -1239,7 +1276,7 @@ function renderRows(tab) {
 
 function rowHtml(v, editable, showEquipe) {
   const p = programacao.get(v.id) || {};
-  const ufAtual = extractUF(p.localizacao);
+  const ufAtual = localizacaoUF(v);
   const ufDest = extractUF(p.destino_final);
   const regiao = regiaoDaUF(ufDest);
   const equipeCell = showEquipe ? `<td class="ro mono" data-label="Equipe">${v.equipe}</td>` : '';
@@ -1248,7 +1285,7 @@ function rowHtml(v, editable, showEquipe) {
     return `<tr data-vid="${v.id}">
       <td class="mono" data-label="Placa">${esc(v.placa)}</td><td class="ro" data-label="Tipo">${esc(v.tipo)}</td><td class="ro" data-label="Conj.">${esc(v.conjunto)}</td>${equipeCell}
       <td class="ro" data-label="Motorista" title="${esc(p.motorista)}">${esc(p.motorista)}</td><td data-label="Status Geral">${badgeStatus(p.status_geral)}</td><td class="ro" data-label="Status" title="${esc(p.status)}">${esc(p.status)}</td>
-      <td class="ro" data-label="Localização" title="${esc(p.localizacao)}">${esc(p.localizacao)}</td><td class="ro mono" data-label="UF">${ufAtual}</td>
+      <td data-label="Localização">${localizacaoCellHtml(v, p, false)}</td><td class="ro mono" data-label="UF">${ufAtual}</td>
       <td class="ro" data-label="Destino Final" title="${esc(p.destino_final)}">${esc(p.destino_final)}</td><td class="ro mono" data-label="UF Dest.">${ufDest}</td><td class="ro muted" data-label="Região">${regiao}</td>
       <td class="ro mono" data-label="Prev. Térm.">${esc(p.previsao_termino)}</td><td class="ro" data-label="Próx. Destino" title="${esc(p.proximo_destino)}">${esc(p.proximo_destino)}</td><td class="ro" data-label="Prev. Cheg. Filial" title="${esc(p.previsao_chegada_filial)}">${esc(p.previsao_chegada_filial)}</td>
       <td class="ro muted" data-label="Obs." title="${esc(p.observacoes)}">${esc(p.observacoes)}</td><td data-label="H. Extra">${heCellHtml(p)}</td><td data-label="Produtiv.">${produtividadeCellHtml(v, p)}</td>
@@ -1261,7 +1298,7 @@ function rowHtml(v, editable, showEquipe) {
     <td data-label="Motorista">${taHtml('motorista', p.motorista)}</td>
     <td data-label="Status Geral"><select class="cell-in" data-field="status_geral"><option value=""></option>${opts}</select></td>
     <td data-label="Status">${taHtml('status', p.status)}</td>
-    <td data-label="Localização">${taHtml('localizacao', p.localizacao, 'CIDADE/UF')}</td>
+    <td data-label="Localização">${localizacaoCellHtml(v, p, true)}</td>
     <td class="ro mono" data-label="UF">${ufAtual}</td>
     <td data-label="Destino Final">${taHtml('destino_final', p.destino_final, 'CIDADE/UF')}</td>
     <td class="ro mono" data-label="UF Dest.">${ufDest}</td><td class="ro muted" data-label="Região">${regiao}</td>
