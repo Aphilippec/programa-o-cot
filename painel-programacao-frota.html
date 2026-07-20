@@ -1435,7 +1435,7 @@ function renderPage(tab) {
       ${addForm}
       ${addMotoristaForm}
       ${exportBar}
-      <div class="scroll"><table class="dt">
+      <div class="scroll scroll-x" style="max-height:70vh"><table class="dt" style="min-width:1400px">
         <thead><tr>${theadHtml}</tr></thead>
         <tbody id="tbody-${tab}"></tbody>
       </table></div>
@@ -2228,7 +2228,7 @@ function renderHistorico() {
       <div class="cc-t">Selecionar data</div>
       <div class="cc-s">Snapshot gravado automaticamente todo dia às 17h (horário de Brasília)</div>
       <input type="date" id="histData" class="cell-in" style="width:160px;border-color:var(--brd2)" max="${hoje}" value="${hoje}">
-      <div class="scroll" style="margin-top:14px"><table class="dt" id="histTable"></table></div>
+      <div class="scroll scroll-x" style="margin-top:14px;max-height:70vh"><table class="dt" id="histTable" style="min-width:900px"></table></div>
     </div>`;
   document.getElementById('histData').addEventListener('change', loadHistorico);
   loadHistorico();
