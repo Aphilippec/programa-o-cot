@@ -103,7 +103,7 @@ input.cell-in:focus{position:relative;z-index:6;width:max(100%,220px);font-size:
 textarea.cell-in{resize:none;overflow:hidden;line-height:1.35;font-family:'DM Sans',sans-serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}
 select.cell-in{cursor:pointer}
 .loc-wrap{position:relative}
-.loc-gps-badge{position:absolute;top:1px;right:2px;font-size:9px;opacity:.65;pointer-events:none;line-height:1}
+.loc-gps-badge{position:absolute;top:2px;right:3px;font-size:13px;opacity:1;pointer-events:none;line-height:1;filter:drop-shadow(0 0 1px rgba(255,255,255,.9))}
 td.ro{color:var(--tx2)}
 
 /* ===== Autocompletar (substitui datalist nativo p/ funcionar com textarea) ===== */
@@ -591,11 +591,28 @@ let acBox = null;
 function hideSuggestions() { if (acBox) { acBox.remove(); acBox = null; } }
 function showSuggestions(el, field, mostrarTudo) {
   hideSuggestions();
-  const list = SUGGESTIONS[field];
-  if (!list || !list.length) return;
   const q = mostrarTudo ? '' : el.value.trim().toLowerCase();
-  const opts = (q ? list.filter(v => v.toLowerCase().includes(q)) : list).slice(0, 200);
-  if (!opts.length) return;
+  let itens; // [{ valor, label }]
+
+  if (field === 'localizacao') {
+    const tr = el.closest('tr');
+    const v = tr ? veiculos.get(tr.dataset.vid) : null;
+    const loc = v ? localizacaoAtual.get(v.placa) : null;
+    const gpsTexto = (loc && loc.cidade) ? `${loc.cidade}/${loc.uf || ''}` : null;
+    const lista = SUGGESTIONS[field] || [];
+    const resto = (q ? lista.filter(x => x.toLowerCase().includes(q)) : lista).filter(x => x !== gpsTexto);
+    itens = resto.map(x => ({ valor: x, label: esc(x) }));
+    if (gpsTexto && (!q || gpsTexto.toLowerCase().includes(q))) {
+      itens.unshift({ valor: gpsTexto, ehGps: true, label: `📡 ${esc(gpsTexto)} <span class="muted" style="font-size:9px">· posição via GPS</span>` });
+    }
+  } else {
+    const list = SUGGESTIONS[field];
+    if (!list || !list.length) return;
+    itens = (q ? list.filter(x => x.toLowerCase().includes(q)) : list).map(x => ({ valor: x, label: esc(x) }));
+  }
+
+  itens = itens.slice(0, 200);
+  if (!itens.length) return;
   const rect = el.getBoundingClientRect();
   const largura = Math.max(rect.width, 200);
   acBox = document.createElement('div');
@@ -603,12 +620,20 @@ function showSuggestions(el, field, mostrarTudo) {
   acBox.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - largura - 8) + 'px';
   acBox.style.top = (rect.bottom + window.scrollY + 3) + 'px';
   acBox.style.width = largura + 'px';
-  acBox.innerHTML = opts.map(o => `<div class="ac-item">${esc(o)}</div>`).join('');
+  acBox.innerHTML = itens.map(it => `<div class="ac-item">${it.label}</div>`).join('');
   document.body.appendChild(acBox);
   [...acBox.children].forEach((item, i) => {
     item.addEventListener('mousedown', (ev) => {
       ev.preventDefault();
-      el.value = opts[i];
+      const it = itens[i];
+      el.value = it.valor;
+      el.dataset.original = it.valor;
+      if (it.ehGps) {
+        // "escolher GPS" limpa a correção manual de vez (não congela o texto de
+        // hoje) — a partir daqui volta a seguir o GPS automaticamente.
+        const tr = el.closest('tr');
+        if (tr) saveField(tr.dataset.vid, field, null);
+      }
       hideSuggestions();
       autoGrow(el);
       el.dispatchEvent(new Event('change'));
