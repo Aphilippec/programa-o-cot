@@ -982,14 +982,16 @@ async function processarOCR(blob, placaInput, statusEl, tab) {
 }
 
 /* =====================================================================
-   EXPORTAR CSV (respeita os filtros ativos no momento)
+   EXPORTAR (CSV / Excel / PDF) — respeita os filtros ativos no momento
    ===================================================================== */
 function csvCell(v) {
   const s = v == null ? '' : String(v);
   return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-function exportarCSV(tab) {
+function nomeAba(tab) { return tab === 'geral' ? 'Visão Geral' : `Equipe ${tab}`; }
+
+function buildExportData(tab) {
   const lista = veiculosDaEquipe(tab);
   const headers = ['Placa', 'Tipo', 'Conjunto', 'Equipe', 'Motorista', 'Status Geral', 'Status',
     'Localização', 'UF', 'Destino Final', 'UF Destino', 'Região', 'Previsão Término',
@@ -1009,16 +1011,102 @@ function exportarCSV(tab) {
       p.proximo_destino, p.previsao_chegada_filial, p.observacoes, he50, he100,
       prod ? prod.km_percorrido : 'Sem rastreador', prod ? prod.km_dia : '', prod ? prod.vel_media : ''];
   });
-  const csv = String.fromCharCode(0xFEFF) + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  return { headers, rows };
+}
+
+function baixarBlob(blob, nomeArquivo) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `frota-visao-geral-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = nomeArquivo;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function nomeArquivoExport(tab, ext) {
+  const sufixo = tab === 'geral' ? 'visao-geral' : `equipe-${tab.toLowerCase()}`;
+  return `frota-${sufixo}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+}
+
+function exportarCSV(tab) {
+  const { headers, rows } = buildExportData(tab);
+  const csv = String.fromCharCode(0xFEFF) + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n');
+  baixarBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), nomeArquivoExport(tab, 'csv'));
+}
+
+let sheetjsCarregado = null;
+function carregarSheetJS() {
+  if (window.XLSX) return Promise.resolve();
+  if (sheetjsCarregado) return sheetjsCarregado;
+  sheetjsCarregado = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Falha ao carregar gerador de Excel'));
+    document.head.appendChild(script);
+  });
+  return sheetjsCarregado;
+}
+
+async function exportarXLSX(tab) {
+  await carregarSheetJS();
+  const { headers, rows } = buildExportData(tab);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, nomeAba(tab).slice(0, 31));
+  XLSX.writeFile(wb, nomeArquivoExport(tab, 'xlsx'));
+}
+
+let jspdfCarregado = null;
+function carregarJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
+  if (jspdfCarregado) return jspdfCarregado;
+  const carregarScript = (src) => new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Falha ao carregar gerador de PDF'));
+    document.head.appendChild(script);
+  });
+  jspdfCarregado = carregarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')
+    .then(() => carregarScript('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'));
+  return jspdfCarregado;
+}
+
+async function exportarPDF(tab) {
+  await carregarJsPDF();
+  const { headers, rows } = buildExportData(tab);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  doc.setFontSize(12);
+  doc.text(`Programação de Frota — ${nomeAba(tab)}`, 20, 20);
+  doc.setFontSize(8);
+  doc.text(new Date().toLocaleString('pt-BR'), 20, 32);
+  doc.autoTable({
+    head: [headers],
+    body: rows.map(r => r.map(c => (c == null ? '' : String(c)))),
+    startY: 40,
+    styles: { fontSize: 6, cellPadding: 2 },
+    headStyles: { fillColor: [24, 48, 96] },
+  });
+  doc.save(nomeArquivoExport(tab, 'pdf'));
+}
+
+async function exportarComFeedback(tab, tipo, fn, btn) {
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Gerando…';
+  try {
+    await fn(tab);
+  } catch (e) {
+    console.error(e);
+    alert(`Erro ao gerar ${tipo}: ${e.message || e}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
 }
 
 /* =====================================================================
@@ -1060,37 +1148,36 @@ function veiculosDaEquipe(equipe) {
   return lista;
 }
 
-function temGpsLocalizacao(v) {
-  const loc = localizacaoAtual.get(v.placa);
-  return !!(loc && loc.cidade);
-}
+// Edição manual sempre liberada (o GPS pode vir errado). Quando existe leitura
+// de GPS pra placa, mostra ela como aviso informativo (com horário do último
+// sinal), sem travar a edição — quem edita decide se confia no GPS ou não.
+// A localização manual tem prioridade sobre o GPS (é a correção do time).
 function localizacaoTexto(v) {
-  const loc = localizacaoAtual.get(v.placa);
-  if (loc && loc.cidade) return `${loc.cidade}/${loc.uf || ''}`;
   const p = programacao.get(v.id);
-  return (p && p.localizacao) ? p.localizacao : '';
+  if (p && p.localizacao) return p.localizacao;
+  const loc = localizacaoAtual.get(v.placa);
+  return (loc && loc.cidade) ? `${loc.cidade}/${loc.uf || ''}` : '';
 }
 function localizacaoUF(v) {
-  const loc = localizacaoAtual.get(v.placa);
-  if (loc && loc.uf && UF_REGIAO[loc.uf]) return loc.uf;
   const p = programacao.get(v.id);
-  return extractUF(p && p.localizacao);
+  const ufManual = extractUF(p && p.localizacao);
+  if (ufManual) return ufManual;
+  const loc = localizacaoAtual.get(v.placa);
+  return (loc && loc.uf && UF_REGIAO[loc.uf]) ? loc.uf : '';
 }
-// GPS presente: sempre automático e travado. Sem GPS: libera edição manual
-// (reaproveita a própria coluna programacao.localizacao como fallback).
+function gpsAvisoHtml(v) {
+  const loc = localizacaoAtual.get(v.placa);
+  if (!loc || !loc.cidade) return '';
+  const quando = loc.data_posicao ? new Date(loc.data_posicao).toLocaleString('pt-BR') : '';
+  return `<div class="muted" style="font-size:10px;margin-top:2px;white-space:nowrap">📡 GPS: ${esc(loc.cidade)}/${esc(loc.uf || '')} · ${esc(quando)}</div>`;
+}
 function localizacaoCellHtml(v, p, editable) {
-  if (temGpsLocalizacao(v)) {
-    const loc = localizacaoAtual.get(v.placa);
-    const texto = `${loc.cidade}/${loc.uf || ''}`;
-    const quando = loc.data_posicao ? new Date(loc.data_posicao).toLocaleString('pt-BR') : '';
-    return `<span class="ro" title="${esc('Posição via GPS em ' + quando)}">${esc(texto)}</span>`;
-  }
+  const aviso = gpsAvisoHtml(v);
   if (editable) {
-    return taHtml('localizacao', p.localizacao, 'CIDADE/UF (sem GPS — digite manualmente)');
+    return taHtml('localizacao', p.localizacao, 'CIDADE/UF') + aviso;
   }
-  return p.localizacao
-    ? `<span class="ro" title="${esc(p.localizacao)}">${esc(p.localizacao)}</span>`
-    : '<span class="ro muted" title="Sem sinal de rastreador">Sem rastreador</span>';
+  const texto = p.localizacao || '';
+  return (texto ? `<span class="ro" title="${esc(texto)}">${esc(texto)}</span>` : '<span class="ro muted">—</span>') + aviso;
 }
 
 function heCellHtml(p) {
@@ -1172,10 +1259,12 @@ function renderPage(tab) {
       <button class="btn-add" id="btnAddMotorista">+ Adicionar motorista</button>
     </div>` : '';
 
-  const exportBar = tab === 'geral' ? `
+  const exportBar = `
     <div style="margin-bottom:14px">
-      <button class="btn-add" id="btnExportar">⬇ Exportar CSV</button>
-    </div>` : '';
+      <button class="btn-add" id="btnExportCSV-${tab}">⬇ CSV</button>
+      <button class="btn-add" id="btnExportXLSX-${tab}">⬇ Excel</button>
+      <button class="btn-add" id="btnExportPDF-${tab}">⬇ PDF</button>
+    </div>`;
 
   const showEquipe = tab === 'geral';
   const cols = [
@@ -1260,7 +1349,12 @@ function renderPage(tab) {
 
   if (editable) document.getElementById('btnAddVeiculo').addEventListener('click', () => addVeiculo(tab));
   if (editable) document.getElementById('btnAddMotorista').addEventListener('click', () => addMotorista());
-  if (tab === 'geral') document.getElementById('btnExportar').addEventListener('click', () => exportarCSV(tab));
+  const btnCSV = document.getElementById(`btnExportCSV-${tab}`);
+  const btnXLSX = document.getElementById(`btnExportXLSX-${tab}`);
+  const btnPDF = document.getElementById(`btnExportPDF-${tab}`);
+  if (btnCSV) btnCSV.addEventListener('click', () => exportarComFeedback(tab, 'CSV', exportarCSV, btnCSV));
+  if (btnXLSX) btnXLSX.addEventListener('click', () => exportarComFeedback(tab, 'Excel', exportarXLSX, btnXLSX));
+  if (btnPDF) btnPDF.addEventListener('click', () => exportarComFeedback(tab, 'PDF', exportarPDF, btnPDF));
 
   renderRows(tab);
 }
