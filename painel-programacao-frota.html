@@ -1296,6 +1296,7 @@ function renderPage(tab) {
       <button class="btn-add" id="btnExportCSV-${tab}">⬇ CSV</button>
       <button class="btn-add" id="btnExportXLSX-${tab}">⬇ Excel</button>
       <button class="btn-add" id="btnExportPDF-${tab}">⬇ PDF</button>
+      ${editable ? `<button class="btn-add" id="btnUsarGpsTodos-${tab}" title="Apaga a correção manual e volta a mostrar a posição do GPS em todos os veículos desta equipe">🛰 Usar GPS em todos</button>` : ''}
     </div>`;
 
   const showEquipe = tab === 'geral';
@@ -1387,8 +1388,40 @@ function renderPage(tab) {
   if (btnCSV) btnCSV.addEventListener('click', () => exportarComFeedback(tab, 'CSV', exportarCSV, btnCSV));
   if (btnXLSX) btnXLSX.addEventListener('click', () => exportarComFeedback(tab, 'Excel', exportarXLSX, btnXLSX));
   if (btnPDF) btnPDF.addEventListener('click', () => exportarComFeedback(tab, 'PDF', exportarPDF, btnPDF));
+  const btnUsarGpsTodos = document.getElementById(`btnUsarGpsTodos-${tab}`);
+  if (btnUsarGpsTodos) btnUsarGpsTodos.addEventListener('click', () => usarGpsEmTodos(tab, btnUsarGpsTodos));
 
   renderRows(tab);
+}
+
+async function usarGpsEmTodos(tab, btn) {
+  const lista = veiculosDaEquipe(tab);
+  const alvos = lista.filter(v => {
+    const p = programacao.get(v.id);
+    const temManual = !!(p && p.localizacao);
+    const loc = localizacaoAtual.get(v.placa);
+    return temManual && !!(loc && loc.cidade);
+  });
+  if (!alvos.length) {
+    alert('Nenhum veículo com correção manual pra reverter — a Localização já está no GPS em todos.');
+    return;
+  }
+  const ok = await confirmarModal(
+    'Usar GPS em todos',
+    `Isso vai apagar a correção manual da Localização de ${alvos.length} veículo(s) desta equipe e voltar a mostrar a posição do GPS. Essa ação não pode ser desfeita. Continuar?`,
+    'Usar GPS'
+  );
+  if (!ok) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Aplicando…';
+  try {
+    await Promise.all(alvos.map(v => sb.from('programacao').update({ localizacao: null }).eq('veiculo_id', v.id)));
+    await loadAll();
+  } finally {
+    const btnAtual = document.getElementById(`btnUsarGpsTodos-${tab}`);
+    if (btnAtual) { btnAtual.disabled = false; btnAtual.textContent = textoOriginal; }
+  }
 }
 
 function renderRows(tab) {
