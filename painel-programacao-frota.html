@@ -1843,6 +1843,12 @@ const DEMANDA_CAMPOS = [
 let demandaSort = { field: null, dir: 'asc' };
 let demandaColumnFilters = {};
 const DEMANDA_CAMPOS_FILTRAVEIS = ['data_coleta', 'embarcador', 'cliente', 'operacao', 'equipamento', 'status'];
+const DEMANDA_CAMPOS_DATA = ['data_coleta'];
+function filtroDemandaAtivo(field) {
+  const q = demandaColumnFilters[field];
+  if (!q) return false;
+  return DEMANDA_CAMPOS_DATA.includes(field) ? !!(q.de || q.ate) : !!q;
+}
 
 async function loadDemandas() {
   // Carrega só os últimos 90 dias (por data_coleta) pra não pesar o
@@ -1868,10 +1874,18 @@ function demandaEditavel(tab) {
 function demandasDaFilial(tab) {
   let lista = tab === 'demandas-geral' ? [...demandas.values()] : [...demandas.values()].filter(d => d.filial_sigla === tab);
   lista = lista.slice();
-  const filtrosAtivos = Object.entries(demandaColumnFilters).filter(([, q]) => q);
+  const filtrosAtivos = Object.keys(demandaColumnFilters).filter(filtroDemandaAtivo);
   if (filtrosAtivos.length) {
-    lista = lista.filter(d => filtrosAtivos.every(([field, q]) => {
+    lista = lista.filter(d => filtrosAtivos.every((field) => {
       const val = d[field];
+      if (DEMANDA_CAMPOS_DATA.includes(field)) {
+        const { de, ate } = demandaColumnFilters[field];
+        if (!val) return false;
+        if (de && val < de) return false;
+        if (ate && val > ate) return false;
+        return true;
+      }
+      const q = demandaColumnFilters[field];
       return val != null && String(val).toLowerCase().includes(q.toLowerCase());
     }));
   }
@@ -1907,7 +1921,7 @@ function renderDemandaPage(tab) {
     const arrow = (field && demandaSort.field === field) ? (demandaSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
     const labelSpan = field ? `<span class="th-label" data-sort-field="${field}">${esc(label)}${arrow}</span>` : label;
     const filtravel = field && DEMANDA_CAMPOS_FILTRAVEIS.includes(field);
-    const filterCls = filtravel && demandaColumnFilters[field] ? ' filtered' : '';
+    const filterCls = filtravel && filtroDemandaAtivo(field) ? ' filtered' : '';
     const fieldAttr = filtravel ? ` data-field="${field}"` : '';
     return `<th${fieldAttr} class="${filterCls}">${labelSpan}${filtravel ? ' <span class="fico">▾</span>' : ''}</th>`;
   }).join('');
@@ -1950,15 +1964,12 @@ function openDemandaColumnFilter(th, field, tab) {
   if (filterBox && filterBox.dataset.field === field) { closeColumnFilter(); return; }
   closeColumnFilter();
   const rect = th.getBoundingClientRect();
-  const current = demandaColumnFilters[field] || '';
-  const distinct = [...new Set(demandasDaFilial(tab).map(d => d[field]).filter(v => v != null && v !== ''))]
-    .map(String).sort();
 
   const aplicar = (tab2) => {
     renderDemandaRows(tab2, demandaEditavel(tab2), tab2 === 'demandas-geral');
     const countEl = document.getElementById(`count-demanda-${tab2}`);
     if (countEl) {
-      const anyFilter = Object.values(demandaColumnFilters).some(Boolean);
+      const anyFilter = Object.keys(demandaColumnFilters).some(filtroDemandaAtivo);
       countEl.textContent = `${demandasDaFilial(tab2).length} demanda(s)` + (anyFilter ? ' · filtro ativo' : ' · clique no nome da coluna pra ordenar, no ▾ pra filtrar');
     }
   };
@@ -1968,30 +1979,57 @@ function openDemandaColumnFilter(th, field, tab) {
   filterBox.dataset.field = field;
   filterBox.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 240) + 'px';
   filterBox.style.top = (rect.bottom + window.scrollY + 3) + 'px';
-  filterBox.innerHTML = `
-    <input type="text" class="filter-input" placeholder="Filtrar…" value="${esc(current)}">
-    <div class="filter-list">${distinct.slice(0, 40).map(d => `<div class="ac-item">${esc(d)}</div>`).join('')}</div>
-    <div class="filter-clear">Limpar filtro</div>`;
-  document.body.appendChild(filterBox);
 
-  const input = filterBox.querySelector('.filter-input');
-  input.focus();
-  input.select();
-  input.addEventListener('input', () => {
-    demandaColumnFilters[field] = input.value;
-    th.classList.toggle('filtered', !!input.value);
-    aplicar(tab);
-  });
-  input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeColumnFilter(); });
-  filterBox.querySelectorAll('.filter-list .ac-item').forEach((item, i) => {
-    item.addEventListener('mousedown', (ev) => {
-      ev.preventDefault();
-      demandaColumnFilters[field] = distinct[i];
-      th.classList.add('filtered');
+  if (DEMANDA_CAMPOS_DATA.includes(field)) {
+    const current = demandaColumnFilters[field] || {};
+    filterBox.innerHTML = `
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">De</div>
+      <input type="date" class="filter-input" id="filtroDataDe" value="${esc(current.de || '')}">
+      <div style="font-size:10px;color:var(--tx3);margin:6px 0 2px">Até</div>
+      <input type="date" class="filter-input" id="filtroDataAte" value="${esc(current.ate || '')}">
+      <div class="filter-clear">Limpar filtro</div>`;
+    document.body.appendChild(filterBox);
+
+    const deInput = filterBox.querySelector('#filtroDataDe');
+    const ateInput = filterBox.querySelector('#filtroDataAte');
+    const onChangeData = () => {
+      demandaColumnFilters[field] = { de: deInput.value, ate: ateInput.value };
+      th.classList.toggle('filtered', filtroDemandaAtivo(field));
       aplicar(tab);
-      closeColumnFilter();
+    };
+    deInput.addEventListener('change', onChangeData);
+    ateInput.addEventListener('change', onChangeData);
+    deInput.focus();
+  } else {
+    const current = demandaColumnFilters[field] || '';
+    const distinct = [...new Set(demandasDaFilial(tab).map(d => d[field]).filter(v => v != null && v !== ''))]
+      .map(String).sort();
+    filterBox.innerHTML = `
+      <input type="text" class="filter-input" placeholder="Filtrar…" value="${esc(current)}">
+      <div class="filter-list">${distinct.slice(0, 40).map(d => `<div class="ac-item">${esc(d)}</div>`).join('')}</div>
+      <div class="filter-clear">Limpar filtro</div>`;
+    document.body.appendChild(filterBox);
+
+    const input = filterBox.querySelector('.filter-input');
+    input.focus();
+    input.select();
+    input.addEventListener('input', () => {
+      demandaColumnFilters[field] = input.value;
+      th.classList.toggle('filtered', !!input.value);
+      aplicar(tab);
     });
-  });
+    input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeColumnFilter(); });
+    filterBox.querySelectorAll('.filter-list .ac-item').forEach((item, i) => {
+      item.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        demandaColumnFilters[field] = distinct[i];
+        th.classList.add('filtered');
+        aplicar(tab);
+        closeColumnFilter();
+      });
+    });
+  }
+
   filterBox.querySelector('.filter-clear').addEventListener('mousedown', (ev) => {
     ev.preventDefault();
     delete demandaColumnFilters[field];
