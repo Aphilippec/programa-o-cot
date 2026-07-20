@@ -1148,10 +1148,10 @@ function veiculosDaEquipe(equipe) {
   return lista;
 }
 
-// Edição manual sempre liberada (o GPS pode vir errado). Quando existe leitura
-// de GPS pra placa, mostra ela como aviso informativo (com horário do último
-// sinal), sem travar a edição — quem edita decide se confia no GPS ou não.
-// A localização manual tem prioridade sobre o GPS (é a correção do time).
+// Edição manual sempre liberada (o GPS pode vir errado). O campo mostra o
+// texto do GPS pré-preenchido quando ainda não há edição manual, e o time
+// pode digitar por cima a qualquer momento — a partir daí o valor manual
+// tem prioridade sobre o GPS (é a correção do time).
 function localizacaoTexto(v) {
   const p = programacao.get(v.id);
   if (p && p.localizacao) return p.localizacao;
@@ -1165,19 +1165,15 @@ function localizacaoUF(v) {
   const loc = localizacaoAtual.get(v.placa);
   return (loc && loc.uf && UF_REGIAO[loc.uf]) ? loc.uf : '';
 }
-function gpsAvisoHtml(v) {
-  const loc = localizacaoAtual.get(v.placa);
-  if (!loc || !loc.cidade) return '';
-  const quando = loc.data_posicao ? new Date(loc.data_posicao).toLocaleString('pt-BR') : '';
-  return `<div class="muted" style="font-size:10px;margin-top:2px;white-space:nowrap">📡 GPS: ${esc(loc.cidade)}/${esc(loc.uf || '')} · ${esc(quando)}</div>`;
-}
+// Campo único: mostra o texto do GPS já preenchido quando não há edição manual
+// ainda, e o time pode digitar por cima dele a qualquer momento (localizacaoTexto
+// já prioriza o valor manual sobre o GPS).
 function localizacaoCellHtml(v, p, editable) {
-  const aviso = gpsAvisoHtml(v);
+  const texto = localizacaoTexto(v);
   if (editable) {
-    return taHtml('localizacao', p.localizacao, 'CIDADE/UF') + aviso;
+    return taHtml('localizacao', texto, 'CIDADE/UF');
   }
-  const texto = p.localizacao || '';
-  return (texto ? `<span class="ro" title="${esc(texto)}">${esc(texto)}</span>` : '<span class="ro muted">—</span>') + aviso;
+  return texto ? `<span class="ro" title="${esc(texto)}">${esc(texto)}</span>` : '<span class="ro muted">—</span>';
 }
 
 function heCellHtml(p) {
@@ -1436,7 +1432,7 @@ function confirmarModal(titulo, mensagem, textoConfirmar = 'Excluir') {
 function taHtml(field, value, placeholder) {
   const v = value == null ? '' : String(value);
   const ph = placeholder ? ` placeholder="${esc(placeholder)}"` : '';
-  return `<textarea class="cell-in" rows="1" data-field="${field}" data-ac="${field}" title="${esc(v)}"${ph}>${esc(v)}</textarea>`;
+  return `<textarea class="cell-in" rows="1" data-field="${field}" data-ac="${field}" data-original="${esc(v)}" title="${esc(v)}"${ph}>${esc(v)}</textarea>`;
 }
 
 function attachRowHandlers(tbody) {
@@ -1451,7 +1447,12 @@ function attachRowHandlers(tbody) {
     });
     el.addEventListener('blur', () => {
       editingKey = null;
-      saveField(vid, field, el.value);
+      // se nada mudou desde o valor exibido (pode ter vindo pré-preenchido do
+      // GPS, no caso da Localização), não grava — evita travar o auto-preenchimento
+      // por um clique sem edição de fato.
+      if (!(el.tagName === 'TEXTAREA' && el.value === el.dataset.original)) {
+        saveField(vid, field, el.value);
+      }
       setTimeout(hideSuggestions, 150);
     });
     if (el.tagName === 'SELECT' || el.type === 'date') el.addEventListener('change', () => saveField(vid, field, el.value));
