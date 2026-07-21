@@ -1714,12 +1714,22 @@ function resolverMatriculaPorNome(nomeDigitado) {
   return candidatos.length === 1 ? candidatos[0] : null;
 }
 
+function mensagemErroSalvar(campoLabel, error) {
+  const msg = (error?.message || '').toLowerCase();
+  if (msg.includes('jwt') || msg.includes('token') || msg.includes('expired') || error?.status === 401) {
+    return 'Sua sessão expirou (a aba ficou aberta por muito tempo). Atualize a página (F5) e faça login de novo — a alteração em "' + campoLabel + '" NÃO foi salva.';
+  }
+  return 'Erro ao salvar "' + campoLabel + '": ' + (error?.message || 'erro desconhecido');
+}
+
 async function saveField(veiculoId, field, value) {
   const patch = { [field]: value || null };
   if (field === 'motorista') {
     patch.motorista_matricula = resolverMatriculaPorNome(value);
   }
-  await sb.from('programacao').update(patch).eq('veiculo_id', veiculoId);
+  const { data, error } = await sb.from('programacao').update(patch).eq('veiculo_id', veiculoId).select();
+  if (error) { alert(mensagemErroSalvar(CAMPO_LABEL[field] || field, error)); return; }
+  if (!data || !data.length) alert('Não foi possível salvar "' + (CAMPO_LABEL[field] || field) + '" — sem permissão para editar este veículo, ou ele foi removido. Atualize a página (F5) e tente de novo.');
 }
 
 async function addVeiculo(equipe) {
@@ -2110,7 +2120,9 @@ async function saveDemandaField(id, field, value) {
   const campo = DEMANDA_CAMPOS.find(c => c.key === field);
   let val = value === '' ? null : value;
   if (campo && campo.tipo === 'number' && val != null) val = Number(val);
-  await sb.from('demandas').update({ [field]: val }).eq('id', id);
+  const { data, error } = await sb.from('demandas').update({ [field]: val }).eq('id', id).select();
+  if (error) { alert(mensagemErroSalvar(campo?.label || field, error)); return; }
+  if (!data || !data.length) alert('Não foi possível salvar "' + (campo?.label || field) + '" — sem permissão pra editar esta demanda, ou ela foi removida. Atualize a página (F5) e tente de novo.');
 }
 
 // Cavalo/Motorista/Carretas/Senha ficam de fora do formulário (só se sabe
