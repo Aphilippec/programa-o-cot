@@ -1435,7 +1435,7 @@ function renderPage(tab) {
       ${addForm}
       ${addMotoristaForm}
       ${exportBar}
-      <div class="scroll scroll-x" style="max-height:70vh"><table class="dt" style="min-width:1400px">
+      <div class="scroll"><table class="dt">
         <thead><tr>${theadHtml}</tr></thead>
         <tbody id="tbody-${tab}"></tbody>
       </table></div>
@@ -2185,7 +2185,7 @@ function renderNecessidadeFiliais() {
   const header = `<div class="hero"><div><div class="hero-title">Necessidade <span>Filiais</span></div>
     <div class="hero-sub">Demandas de hoje em diante — todas as filiais</div></div></div>`;
 
-  const cols = ['Filial', 'Data Coleta', 'Hora Coleta', 'Embarcador', 'Cliente', 'Cidade', 'Motorista', 'Cavalo'];
+  const cols = ['Filial', 'Data Coleta', 'Hora Coleta', 'Embarcador', 'Cliente', 'Cidade', 'Equipamento', 'Motorista', 'Cavalo'];
   const theadHtml = cols.map(c => `<th>${esc(c)}</th>`).join('');
 
   const linhasHtml = lista.map(d => {
@@ -2200,6 +2200,7 @@ function renderNecessidadeFiliais() {
       <td class="ro" data-label="Embarcador">${esc(d.embarcador)}</td>
       <td class="ro" data-label="Cliente">${esc(d.cliente)}</td>
       <td class="ro" data-label="Cidade">${esc(d.cidade)}</td>
+      <td class="ro" data-label="Equipamento">${esc(d.equipamento)}</td>
       <td data-label="Motorista">${campoEditavel('motorista')}</td>
       <td data-label="Cavalo">${campoEditavel('cavalo')}</td>
     </tr>`;
@@ -2267,7 +2268,7 @@ function renderHistorico() {
       <div class="cc-t">Selecionar data</div>
       <div class="cc-s">Snapshot gravado automaticamente todo dia às 17h (horário de Brasília)</div>
       <input type="date" id="histData" class="cell-in" style="width:160px;border-color:var(--brd2)" max="${hoje}" value="${hoje}">
-      <div class="scroll scroll-x" style="margin-top:14px;max-height:70vh"><table class="dt" id="histTable" style="min-width:900px"></table></div>
+      <div class="scroll" style="margin-top:14px"><table class="dt" id="histTable"></table></div>
     </div>`;
   document.getElementById('histData').addEventListener('change', loadHistorico);
   loadHistorico();
