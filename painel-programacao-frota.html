@@ -731,17 +731,17 @@ function showSuggestions(el, field, mostrarTudo) {
     item.addEventListener('mousedown', (ev) => {
       ev.preventDefault();
       const it = itens[i];
+      const tr = el.closest('tr');
       el.value = it.valor;
       el.dataset.original = it.valor;
-      if (it.ehGps) {
-        // "escolher GPS" limpa a correção manual de vez (não congela o texto de
-        // hoje) — a partir daqui volta a seguir o GPS automaticamente.
-        const tr = el.closest('tr');
-        if (tr) saveField(tr.dataset.vid, field, null);
-      }
       hideSuggestions();
       autoGrow(el);
-      el.dispatchEvent(new Event('change'));
+      if (!tr) return;
+      // "escolher GPS" limpa a correção manual de vez (não congela o texto de
+      // hoje) — a partir daqui volta a seguir o GPS automaticamente. Nos demais
+      // casos salva o valor escolhido — o campo é textarea e só grava no blur,
+      // que não vai disparar aqui porque o texto exibido já bate com o original.
+      saveField(tr.dataset.vid, field, it.ehGps ? null : it.valor);
     });
   });
 }
